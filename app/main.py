@@ -14,6 +14,11 @@ from app.core.database import engine, Base
 from app.api import auth, tasks, monitoring, reports, rag, system, competitors
 from app.api.v2 import agent as agent_v2
 from app.services.scheduler import MonitoringScheduler
+from app.agent.daemon import GrowthDaemon
+from app.agent.tools import ToolRegistry
+from app.agent.tools.research import WebSearchTool, ScrapeWebsiteTool, SocialSearchTool
+from app.agent.memory import GrowthMemory
+from app.agent.engine.llm_adapter import AgentLLM
 
 settings = get_settings()
 
@@ -34,9 +39,22 @@ async def lifespan(app: FastAPI):
     scheduler.start()
     app.state.monitoring_scheduler = scheduler
 
+    # Growth Daemon — 后台增长引擎
+    tools = ToolRegistry()
+    tools.register(WebSearchTool())
+    tools.register(ScrapeWebsiteTool())
+    tools.register(SocialSearchTool())
+    memory = GrowthMemory(base_dir=".crabres/memory/global")
+    llm = AgentLLM(budget_limit_usd=0.1)  # Daemon 预算很低
+
+    daemon = GrowthDaemon(memory=memory, tools=tools, llm=llm)
+    await daemon.start()
+    app.state.growth_daemon = daemon
+
     logging.info("🦀 CrabRes Agent Engine started!")
     yield
 
+    await daemon.stop()
     scheduler.shutdown()
     await engine.dispose()
     logging.info("🦀 CrabRes shut down")

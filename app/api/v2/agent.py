@@ -187,3 +187,15 @@ async def get_session_cost(
     if not loop:
         raise HTTPException(status_code=404, detail="会话不存在")
     return loop.llm.get_cost_report()
+
+
+@router.get("/discoveries")
+async def get_discoveries(
+    current_user: dict = Depends(get_current_user),
+):
+    """获取 Growth Daemon 的最新发现（前端轮询此接口）"""
+    from app.main import app as fastapi_app
+    daemon = getattr(fastapi_app.state, 'growth_daemon', None)
+    if not daemon:
+        return {"discoveries": [], "note": "Daemon not running"}
+    return {"discoveries": daemon.get_pending_discoveries()}
