@@ -17,7 +17,7 @@ from app.core.security import get_current_user
 from app.agent.engine.llm_adapter import AgentLLM
 from app.agent.engine.loop import AgentLoop, LoopState
 from app.agent.tools import ToolRegistry
-from app.agent.tools.research import WebSearchTool, ScrapeWebsiteTool, SocialSearchTool, CompetitorAnalyzeTool
+from app.agent.tools.research import WebSearchTool, ScrapeWebsiteTool, SocialSearchTool, CompetitorAnalyzeTool, DeepScrapeTool
 from app.agent.experts import ExpertPool
 from app.agent.experts.market_researcher import MarketResearcher
 from app.agent.experts.economist import Economist
@@ -48,6 +48,7 @@ def _get_or_create_tools() -> ToolRegistry:
     registry.register(ScrapeWebsiteTool())
     registry.register(SocialSearchTool())
     registry.register(CompetitorAnalyzeTool())
+    registry.register(DeepScrapeTool())
     return registry
 
 

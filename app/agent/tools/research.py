@@ -274,3 +274,83 @@ def _extract_title(html: str) -> str:
     import re
     match = re.search(r'<title[^>]*>(.*?)</title>', html, re.IGNORECASE | re.DOTALL)
     return match.group(1).strip() if match else ""
+
+
+FIRECRAWL_URL = "https://api.firecrawl.dev/v1"
+
+
+class DeepScrapeTool(BaseTool):
+    """
+    深度抓取工具 — 用 Firecrawl 处理 JS 渲染页面
+    
+    比 httpx 更强：能处理 SPA、反爬页面、动态加载内容。
+    适用于：Instagram 公开页、复杂的产品页、需要渲染 JS 的网站。
+    免费 500 次/月。
+    """
+
+    @property
+    def definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="deep_scrape",
+            description="Deep scrape a URL using Firecrawl (handles JavaScript rendering, anti-bot pages). Use when regular scrape fails or for complex pages like Instagram profiles, single-page apps. Returns clean markdown content.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "URL to deep scrape"},
+                    "formats": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": ["markdown", "html", "links"]},
+                        "default": ["markdown"],
+                        "description": "Output formats",
+                    },
+                },
+                "required": ["url"],
+            },
+            concurrent_safe=True,
+            result_budget=30_000,
+        )
+
+    async def execute(self, url: str, formats: list[str] | None = None) -> Any:
+        if not settings.FIRECRAWL_API_KEY or settings.FIRECRAWL_API_KEY.startswith('填'):
+            # 降级到普通 scrape
+            scraper = ScrapeWebsiteTool()
+            result = await scraper.execute(url=url)
+            result["note"] = "Firecrawl not configured, used basic scrape. Set FIRECRAWL_API_KEY for better results."
+            return result
+
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.post(
+                    f"{FIRECRAWL_URL}/scrape",
+                    headers={
+                        "Authorization": f"Bearer {settings.FIRECRAWL_API_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "url": url,
+                        "formats": formats or ["markdown"],
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+
+                result_data = data.get("data", {})
+                markdown = result_data.get("markdown", "")
+                metadata = result_data.get("metadata", {})
+
+                return {
+                    "url": url,
+                    "title": metadata.get("title", ""),
+                    "description": metadata.get("description", ""),
+                    "content": markdown[:self.definition.result_budget],
+                    "content_length": len(markdown),
+                    "status": metadata.get("statusCode", 200),
+                    "source": "firecrawl",
+                }
+        except Exception as e:
+            logger.error(f"Firecrawl scrape failed: {e}")
+            # 降级
+            scraper = ScrapeWebsiteTool()
+            result = await scraper.execute(url=url)
+            result["firecrawl_error"] = str(e)
+            return result

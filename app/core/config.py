@@ -30,6 +30,7 @@ class Settings(BaseSettings):
 
     # ========== 搜索 API ==========
     TAVILY_API_KEY: Optional[str] = None
+    FIRECRAWL_API_KEY: Optional[str] = None
 
     # ========== 消息平台（国内）==========
     WECOM_WEBHOOK_URL: Optional[str] = None

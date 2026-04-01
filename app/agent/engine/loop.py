@@ -282,6 +282,14 @@ class AgentLoop:
 - critic: 策略审核专家（验证策略一致性、预算合理性、可行性）
 - designer: 设计大佬（广告海报、社媒配图、品牌视觉、落地页设计）
 
+## 可用工具（通过 call_tool 调用）
+
+- web_search: 搜索互联网（竞品、行业数据、趋势）
+- scrape_website: 抓取网页内容（竞品网站、产品页）
+- social_search: 搜索社媒讨论（Reddit/HN/X/PH/LinkedIn）
+- competitor_analyze: 深度竞品分析（并行搜+抓+社媒）
+- deep_scrape: 深度抓取复杂页面（JS渲染、Instagram等）
+
 ## 决策指令
 
 根据当前阶段和上下文，决定下一步行动：
