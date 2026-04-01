@@ -20,19 +20,25 @@ interface SurfaceProps {
 export function Surface({ creature, onChat, onPlan, onSettings }: SurfaceProps) {
   const greeting = getGreeting(creature)
   const [discoveries, setDiscoveries] = useState<any[]>([])
+  const [tasks, setTasks] = useState<any[]>([])
+  const [stats, setStats] = useState<any>(null)
 
-  // 每 60 秒轮询 Daemon 发现
+  // 加载真实数据
   useEffect(() => {
-    const poll = async () => {
+    const load = async () => {
       try {
-        const res = await api<any>('/agent/discoveries')
-        if (res.discoveries?.length > 0) {
-          setDiscoveries(prev => [...res.discoveries, ...prev].slice(0, 5))
-        }
+        const [taskRes, discRes, statRes] = await Promise.all([
+          api<any>('/growth/tasks').catch(() => ({ tasks: [] })),
+          api<any>('/growth/discoveries').catch(() => ({ discoveries: [] })),
+          api<any>('/growth/stats').catch(() => null),
+        ])
+        setTasks(taskRes.tasks || [])
+        setDiscoveries(discRes.discoveries || [])
+        if (statRes) setStats(statRes)
       } catch {}
     }
-    poll()
-    const interval = setInterval(poll, 60_000)
+    load()
+    const interval = setInterval(load, 60_000)
     return () => clearInterval(interval)
   }, [])
 
@@ -65,27 +71,27 @@ export function Surface({ creature, onChat, onPlan, onSettings }: SurfaceProps) 
 
       {/* 3 个核心数字 */}
       <div className="flex items-center gap-6 mb-8">
-        <MetricCard value={`+${creature.growthRate}%`} label="growth" />
-        <MetricCard value={`${creature.totalUsers}`} label="users" />
-        <MetricCard value={`${creature.streakDays}d`} label="streak" accent />
+        <MetricCard value={`+${stats?.growth_rate ?? creature.growthRate}%`} label="growth" />
+        <MetricCard value={`${stats?.total_users ?? creature.totalUsers}`} label="users" />
+        <MetricCard value={`${stats?.streak_days ?? creature.streakDays}d`} label="streak" accent />
       </div>
 
       {/* 今日任务 */}
       <div className="w-full mb-6">
-        <h3 className="text-xs font-medium text-muted uppercase tracking-wider mb-3">Today</h3>
+        <h3 className="text-xs font-medium text-muted uppercase tracking-wider mb-3 font-heading">Today</h3>
         <div className="space-y-2">
-          <TaskCard
-            icon={<PenIcon />}
-            title="Publish Reddit post"
-            subtitle="r/cscareerquestions · draft ready"
-            action="Do it"
-          />
-          <TaskCard
-            icon={<ChatIcon />}
-            title="Reply to a comment"
-            subtitle="Someone asking about resume tools"
-            action="View"
-          />
+          {tasks.length > 0 ? tasks.map((t: any, i: number) => (
+            <TaskCard
+              key={t.id || i}
+              icon={t.type === 'chat' ? <ChatIcon /> : <PenIcon />}
+              title={t.title}
+              subtitle={t.subtitle || ''}
+              action={t.type === 'chat' ? 'Chat' : 'Do it'}
+            />
+          )) : (
+            <TaskCard icon={<ChatIcon />} title="Tell CrabRes about your product"
+              subtitle="Start a conversation to begin research" action="Chat" />
+          )}
         </div>
       </div>
 
