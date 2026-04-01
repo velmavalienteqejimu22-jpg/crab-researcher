@@ -4,7 +4,9 @@
  * 展示完整的增长策略、进度和内容日历。
  */
 
+import { useState, useEffect } from 'react'
 import type { CreatureState } from '../components/creature/types'
+import { api } from '../lib/api'
 
 interface PlanProps {
   creature: CreatureState
@@ -28,37 +30,33 @@ interface CalendarItem {
 }
 
 export function Plan({ creature, onBack }: PlanProps) {
-  // TODO: 从 API 加载真实数据
-  const strategies: Strategy[] = [
-    {
-      id: '1', name: 'Reddit Community', status: 'active',
-      channel: 'r/cscareerquestions · r/resumes',
-      metric: '+34 users this month',
-      detail: '3 posts/week + 15min/day replies',
-    },
-    {
-      id: '2', name: 'Career Coach Partnerships', status: 'in_progress',
-      channel: '5 coaches targeted',
-      metric: '1 replied · 0 confirmed',
-      detail: 'Free trial exchange for recommendations',
-    },
-    {
-      id: '3', name: 'SEO Long-term', status: 'early',
-      channel: 'Blog + landing pages',
-      metric: '3 articles · 0 keywords in top 50',
-      detail: 'Targeting 20 long-tail keywords',
-    },
+  const [plan, setPlan] = useState<any>(null)
+  const [calendar, setCalendar] = useState<CalendarItem[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [planRes, calRes] = await Promise.all([
+          api<any>('/growth/plan').catch(() => null),
+          api<any>('/growth/calendar').catch(() => ({ calendar: [] })),
+        ])
+        if (planRes) setPlan(planRes)
+        setCalendar(calRes.calendar || [])
+      } catch {} finally { setLoading(false) }
+    }
+    load()
+  }, [])
+
+  // 从 plan 数据中提取策略，或用默认
+  const strategies: Strategy[] = plan?.plan?.strategies || [
+    { id: '1', name: 'Start a conversation', status: 'planned' as const,
+      channel: 'Talk to CrabRes', metric: 'Not started',
+      detail: 'Tell CrabRes about your product to generate your growth plan' },
   ]
 
-  const calendar: CalendarItem[] = [
-    { day: 'Mon', status: 'done', title: 'Reddit post: "5 resume mistakes..."', channel: 'r/cscareerquestions' },
-    { day: 'Wed', status: 'ready', title: 'LinkedIn article: "Why mock interviews..."', channel: 'LinkedIn' },
-    { day: 'Fri', status: 'ready', title: 'Reddit post: "Free resume review thread"', channel: 'r/resumes' },
-    { day: 'Sun', status: 'upcoming', title: 'Blog: "AI in job hunting 2026"', channel: 'Blog' },
-  ]
-
-  const progress = creature.totalUsers
-  const goal = 1000
+  const progress = plan?.plan?.progress || creature.totalUsers
+  const goal = plan?.plan?.goal || 500
   const pct = Math.min(Math.round((progress / goal) * 100), 100)
 
   return (
@@ -136,9 +134,10 @@ export function Plan({ creature, onBack }: PlanProps) {
 
         {/* 内容日历 */}
         <div>
-          <h3 className="text-xs font-medium text-muted uppercase tracking-wider mb-3">This week</h3>
-          <div className="space-y-2">
-            {calendar.map((item, i) => (
+          <h3 className="text-xs font-medium text-muted uppercase tracking-wider mb-3 font-heading">This week</h3>
+          {calendar.length > 0 ? (
+            <div className="space-y-2">
+              {calendar.map((item, i) => (
               <div key={i} className="flex items-center gap-3 p-3 rounded-xl hover:bg-hover transition-colors">
                 <div className="w-10 text-center shrink-0">
                   <span className="text-xs font-medium text-muted">{item.day}</span>
@@ -162,6 +161,12 @@ export function Plan({ creature, onBack }: PlanProps) {
               </div>
             ))}
           </div>
+          ) : (
+            <div className="card p-6 text-center">
+              <p className="text-sm text-muted">No content scheduled yet.</p>
+              <p className="text-xs text-muted mt-1">Chat with CrabRes to generate your content calendar.</p>
+            </div>
+          )}
         </div>
       </div>
     </div>
