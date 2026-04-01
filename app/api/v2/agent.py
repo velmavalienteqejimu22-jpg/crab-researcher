@@ -82,6 +82,7 @@ async def agent_chat(
         llm = AgentLLM()
         tools = _get_or_create_tools()
         experts = _get_or_create_experts()
+        experts.set_llm(llm)  # 专家共享 LLM 实例
         memory = GrowthMemory(base_dir=f".crabres/memory/{current_user.get('user_id', 'default')}")
 
         loop = AgentLoop(

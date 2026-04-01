@@ -60,5 +60,5 @@ class MarketResearcher(BaseExpert):
 请用结构化的方式输出，包含：数据来源、关键发现、不确定性、建议下一步。"""
 
     async def analyze(self, context: dict, task: str) -> str:
-        # TODO: 调用 LLM + 工具执行研究
-        return f"[市场研究专家] 收到任务: {task}\n分析待实现"
+        # 使用基类的 LLM 调用
+        return await super().analyze(context, task)

@@ -74,13 +74,6 @@ class LoopState:
 class AgentLoop:
     """
     CrabRes 核心 Agent 循环
-    
-    设计原则（学自 Claude Code + Harness Engineering）：
-    1. 简单循环 + 复杂工具（循环逻辑简单，复杂性在工具和专家里）
-    2. Prompt 即架构（编排逻辑在 prompt 里，不是硬编码流程）
-    3. 确定性包裹非确定性（每次 LLM 调用都有验证和兜底）
-    4. 永不崩溃（任何错误都能恢复）
-    5. 策略不固定化（不预设"第1步做SEO第2步做社媒"这种套路）
     """
 
     def __init__(self, session_id: str, llm_service, tool_registry, expert_pool, memory):
@@ -92,6 +85,8 @@ class AgentLoop:
         self._running = False
         self._max_consecutive_errors = 3
         self._error_count = 0
+        self._max_loop_iterations = 8  # 单次用户消息最多循环 8 次
+        self._message_history: list[dict] = []  # 跨轮次消息历史
 
     async def run(self, user_message: str):
         """
@@ -111,18 +106,22 @@ class AgentLoop:
         # 加载记忆上下文
         context = await self._build_context(user_message)
 
-        while self._running:
+        iteration = 0
+        while self._running and iteration < self._max_loop_iterations:
+            iteration += 1
             try:
                 # 1. THINK: 让 Coordinator（首席增长官）决定下一步
                 decision = await self._think(context)
 
                 if decision.type == ActionType.OUTPUT:
                     # 最终输出给用户
+                    self._message_history.append({"role": "assistant", "content": decision.content})
                     yield {"type": "message", "content": decision.content}
                     break
 
                 elif decision.type == ActionType.ASK_USER:
                     # 需要用户提供信息
+                    self._message_history.append({"role": "assistant", "content": decision.content})
                     yield {"type": "question", "content": decision.content}
                     self.state.is_waiting_for_user = True
                     break
@@ -321,15 +320,43 @@ class AgentLoop:
         return context
 
     async def _build_context(self, user_message: str) -> dict:
-        """构建当前上下文（从记忆加载）"""
-        # 加载产品 DNA
+        """构建当前上下文"""
+        # 加载记忆
         product = await self.memory.load("product")
-        # 加载竞品数据
         competitors = await self.memory.load("competitors")
-        # 加载当前策略
         strategy = await self.memory.load("strategy")
-        # 加载执行效果
         results = await self.memory.load("results")
+
+        # 把用户消息加入消息历史
+        if user_message:
+            self._message_history.append({"role": "user", "content": user_message})
+
+        # 构建上下文摘要注入到消息中
+        context_summary_parts = []
+        if product:
+            context_summary_parts.append(f"[已知产品信息]: {json.dumps(product, ensure_ascii=False, default=str)}")
+        if competitors:
+            context_summary_parts.append(f"[已知竞品数据]: {json.dumps(competitors, ensure_ascii=False, default=str)[:500]}")
+        if strategy:
+            context_summary_parts.append(f"[当前策略]: {json.dumps(strategy, ensure_ascii=False, default=str)[:500]}")
+        if results:
+            context_summary_parts.append(f"[执行效果]: {json.dumps(results, ensure_ascii=False, default=str)[:300]}")
+
+        # 消息列表：如果有上下文摘要，作为第一条 system reminder 注入
+        messages = []
+        if context_summary_parts:
+            messages.append({
+                "role": "user",
+                "content": "[系统注入的背景信息，不是用户说的]\n" + "\n".join(context_summary_parts),
+            })
+            messages.append({
+                "role": "assistant",
+                "content": "收到，我已了解背景信息。",
+            })
+
+        # 加入消息历史（截取最近 20 条，避免超 token）
+        recent_history = self._message_history[-20:]
+        messages.extend(recent_history)
 
         return {
             "user_message": user_message,
@@ -337,7 +364,7 @@ class AgentLoop:
             "competitors": competitors or {},
             "strategy": strategy or {},
             "results": results or {},
-            "messages": [],  # 会话消息历史
+            "messages": messages,
             "phase": self.state.phase.value,
         }
 

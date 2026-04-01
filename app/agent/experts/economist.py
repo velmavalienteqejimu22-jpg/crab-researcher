@@ -63,4 +63,4 @@ class Economist(BaseExpert):
 包含：假设条件、计算过程、结论、风险提示。"""
 
     async def analyze(self, context: dict, task: str) -> str:
-        return f"[经济学顾问] 收到任务: {task}\n分析待实现"
+        return await super().analyze(context, task)
