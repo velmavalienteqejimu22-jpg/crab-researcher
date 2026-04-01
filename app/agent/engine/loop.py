@@ -128,17 +128,27 @@ class AgentLoop:
 
                 elif decision.type == ActionType.TOOL_CALL:
                     # 2. ACT: 执行工具
-                    yield {"type": "status", "content": f"正在{decision.content}..."}
+                    yield {"type": "status", "content": f"Researching: {decision.content}..."}
                     result = await self._execute_tool(decision)
-                    # 3. OBSERVE: 将结果加入上下文
+                    # 3. OBSERVE: 将结果加入上下文 + 消息历史
                     context = self._incorporate_result(context, decision, result)
+                    # 把工具结果作为 assistant 消息加入历史（Coordinator 下次能看到）
+                    result_summary = json.dumps(result, ensure_ascii=False, default=str)[:2000]
+                    self._message_history.append({
+                        "role": "assistant",
+                        "content": f"[Tool: {decision.tool_name}] Result: {result_summary}",
+                    })
 
                 elif decision.type == ActionType.EXPERT:
                     # 调度专家
-                    yield {"type": "status", "content": f"咨询{decision.content}..."}
+                    yield {"type": "status", "content": f"Consulting {decision.content}..."}
                     expert_output = await self._consult_expert(decision, context)
                     context = self._incorporate_expert(context, decision, expert_output)
-                    # 可选：让用户看到专家思考过程
+                    # 把专家输出加入消息历史
+                    self._message_history.append({
+                        "role": "assistant",
+                        "content": f"[Expert: {decision.expert_id}] {expert_output[:1500]}",
+                    })
                     yield {
                         "type": "expert_thinking",
                         "expert_id": decision.expert_id,
@@ -146,8 +156,12 @@ class AgentLoop:
                     }
 
                 elif decision.type == ActionType.THINK:
-                    # 内部推理，不输出给用户
+                    # 内部推理，不输出给用户，但加入历史让 Coordinator 记住
                     context = self._incorporate_thinking(context, decision)
+                    self._message_history.append({
+                        "role": "assistant",
+                        "content": f"[Internal reasoning] {decision.content[:500]}",
+                    })
 
                 # 记录行动
                 self.state.actions_history.append(decision)
