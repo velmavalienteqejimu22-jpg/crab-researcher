@@ -1,8 +1,8 @@
 {
-  "session_id": "110374f8-0536-472f-900f-83e4a2c513fa",
+  "session_id": "97dda9a6-b4b6-4b06-aa13-1db4a4de7b05",
   "phase": "intake",
   "turn_count": 1,
-  "tokens_used": 3245,
+  "tokens_used": 2360,
   "pending_tasks": [],
   "expert_outputs_keys": [],
   "is_waiting": false
