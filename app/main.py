@@ -15,6 +15,8 @@ from app.api import auth, tasks, monitoring, reports, rag, system, competitors
 from app.api.v2 import agent as agent_v2
 from app.api.v2 import growth_data as growth_data_v2
 from app.api.v2 import oauth as oauth_v2
+from app.api.v2 import share as share_v2
+from app.api.v2 import mcp as mcp_v2
 from app.services.scheduler import MonitoringScheduler
 from app.agent.daemon import GrowthDaemon
 from app.agent.notifications import NotificationHub
@@ -94,6 +96,8 @@ app.include_router(competitors.router, prefix=settings.API_PREFIX)
 app.include_router(agent_v2.router, prefix=settings.API_PREFIX)
 app.include_router(growth_data_v2.router, prefix=settings.API_PREFIX)
 app.include_router(oauth_v2.router, prefix=settings.API_PREFIX)
+app.include_router(share_v2.router, prefix=settings.API_PREFIX)
+app.include_router(mcp_v2.router, prefix=settings.API_PREFIX)
 
 
 @app.get("/", tags=["Root"])
