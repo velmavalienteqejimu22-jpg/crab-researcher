@@ -49,6 +49,7 @@ export function Plan({ creature, onBack }: PlanProps) {
   }, [])
 
   // 从 plan 数据中提取策略，或用默认
+  const planContent = plan?.plan?.content || ''
   const strategies: Strategy[] = plan?.plan?.strategies || [
     { id: '1', name: 'Start a conversation', status: 'planned' as const,
       channel: 'Talk to CrabRes', metric: 'Not started',
@@ -168,6 +169,18 @@ export function Plan({ creature, onBack }: PlanProps) {
             </div>
           )}
         </div>
+
+        {/* Agent 输出的完整计划 */}
+        {planContent && (
+          <div>
+            <h3 className="text-xs font-medium text-muted uppercase tracking-wider mb-3 font-heading">Full Plan</h3>
+            <div className="card p-5">
+              <div className="text-sm text-secondary whitespace-pre-wrap leading-relaxed">
+                {planContent}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -119,6 +119,8 @@ class AgentLoop:
                 if decision.type == ActionType.OUTPUT:
                     # 最终输出给用户
                     self._message_history.append({"role": "assistant", "content": decision.content})
+                    # 自动存储输出到记忆（让 Plan/Surface 能读取）
+                    await self._save_output_to_memory(decision.content)
                     yield {"type": "message", "content": decision.content}
                     break
 
@@ -417,11 +419,53 @@ class AgentLoop:
             context = await self._build_context("")
         return context
 
+    async def _save_output_to_memory(self, content: str):
+        """把 Agent 输出自动存入记忆，让 Plan/Surface 能读取"""
+        # 检测是否包含策略/计划内容
+        plan_keywords = ['strategy', 'plan', 'step', 'phase', 'month', 'week',
+                        '策略', '计划', '步骤', '阶段']
+        is_plan = any(kw in content.lower() for kw in plan_keywords)
+
+        if is_plan and len(content) > 200:
+            await self.memory.save("growth_plan", {
+                "content": content,
+                "turn": self.state.turn_count,
+                "updated_at": time.time(),
+            }, category="strategy")
+
+            # 也生成简化的每日任务
+            tasks = []
+            lines = content.split('\n')
+            for line in lines:
+                line = line.strip()
+                if line and (line.startswith('- ') or line.startswith('1.') or line.startswith('2.') or line.startswith('3.')):
+                    clean = line.lstrip('-123456789. ').strip()
+                    if clean and len(clean) > 10 and len(clean) < 200:
+                        tasks.append({
+                            "id": f"task-{len(tasks)}",
+                            "type": "action",
+                            "title": clean[:80],
+                            "subtitle": "From growth plan",
+                            "status": "pending",
+                        })
+                        if len(tasks) >= 5:
+                            break
+
+            if tasks:
+                await self.memory.save("daily_tasks", tasks, category="strategy")
+
+            logger.info(f"Saved growth plan to memory ({len(content)} chars, {len(tasks)} tasks)")
+
+        # 记录到日志
+        await self.memory.append_journal({
+            "type": "agent_output",
+            "content_preview": content[:300],
+            "turn": self.state.turn_count,
+            "timestamp": time.time(),
+        })
+
     async def _maybe_save_product_info(self, user_message: str):
-        """
-        如果用户消息包含产品信息，自动提取存入记忆。
-        这确保后续对话和 Daemon 都能访问产品数据。
-        """
+        """如果用户消息包含产品信息，自动存入记忆"""
         msg = user_message.lower()
         # 简单启发式：第一条消息通常包含产品描述
         product_keywords = ['my product', 'i built', 'i made', 'i\'m building', 'i have a',

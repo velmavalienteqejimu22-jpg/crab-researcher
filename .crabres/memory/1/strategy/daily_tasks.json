@@ -1,0 +1,37 @@
+[
+  {
+    "id": "task-0",
+    "type": "action",
+    "title": "**Define Your Unique Value Proposition (UVP)**",
+    "subtitle": "From growth plan",
+    "status": "pending"
+  },
+  {
+    "id": "task-1",
+    "type": "action",
+    "title": "Clearly articulate what makes CrabRes unique. Example: \"CrabRes is an AI growth ",
+    "subtitle": "From growth plan",
+    "status": "pending"
+  },
+  {
+    "id": "task-2",
+    "type": "action",
+    "title": "Refine this message based on feedback from early adopters.",
+    "subtitle": "From growth plan",
+    "status": "pending"
+  },
+  {
+    "id": "task-3",
+    "type": "action",
+    "title": "**Leverage Free Tools for Market Research**",
+    "subtitle": "From growth plan",
+    "status": "pending"
+  },
+  {
+    "id": "task-4",
+    "type": "action",
+    "title": "Use Google Forms or Typeform to survey your target audience (e.g., startups, sol",
+    "subtitle": "From growth plan",
+    "status": "pending"
+  }
+]
