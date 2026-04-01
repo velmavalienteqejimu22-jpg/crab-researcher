@@ -27,14 +27,23 @@ class BaseExpert(ABC):
         ...
 
     async def analyze(self, context: dict, task: str) -> str:
-        """执行分析任务，调用 LLM"""
+        """执行分析任务，调用 LLM，自动注入专业知识库"""
         if not self._llm:
             return f"[{self.name}] LLM 未初始化"
 
         from app.agent.engine.llm_adapter import TaskTier
+        from app.agent.knowledge.skills_registry import get_expert_knowledge
         import json
 
-        # 构建专家专用的消息
+        # 获取该专家的专业知识库
+        knowledge = get_expert_knowledge(self.expert_id)
+
+        # 构建增强版 system prompt = 专家基础 prompt + 专业知识
+        enhanced_prompt = self.system_prompt
+        if knowledge:
+            enhanced_prompt += "\n" + knowledge
+
+        # 构建任务消息
         product_info = context.get("product", {})
         expert_outputs = context.get("expert_outputs", {})
 
@@ -48,9 +57,9 @@ class BaseExpert(ABC):
 {json.dumps(expert_outputs, ensure_ascii=False, default=str)[:1000] if expert_outputs else "暂无"}
 """
         response = await self._llm.generate(
-            system_prompt=self.system_prompt,
+            system_prompt=enhanced_prompt,
             messages=[{"role": "user", "content": user_content}],
-            tier=TaskTier.THINKING,  # 专家分析用 THINKING tier
+            tier=TaskTier.THINKING,
             max_tokens=2048,
         )
         return response.content
