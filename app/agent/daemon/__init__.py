@@ -29,10 +29,11 @@ class GrowthDaemon:
 
     TICK_INTERVAL = 1800  # 30 分钟
 
-    def __init__(self, memory, tools, llm=None):
+    def __init__(self, memory, tools, llm=None, notifier=None):
         self.memory = memory
         self.tools = tools
         self.llm = llm
+        self.notifier = notifier  # NotificationHub
         self._running = False
         self._task: Optional[asyncio.Task] = None
         self._discoveries: list[dict] = []  # 待通知的发现

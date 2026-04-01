@@ -15,6 +15,7 @@ from app.api import auth, tasks, monitoring, reports, rag, system, competitors
 from app.api.v2 import agent as agent_v2
 from app.services.scheduler import MonitoringScheduler
 from app.agent.daemon import GrowthDaemon
+from app.agent.notifications import NotificationHub
 from app.agent.tools import ToolRegistry
 from app.agent.tools.research import WebSearchTool, ScrapeWebsiteTool, SocialSearchTool
 from app.agent.memory import GrowthMemory
@@ -47,7 +48,7 @@ async def lifespan(app: FastAPI):
     memory = GrowthMemory(base_dir=".crabres/memory/global")
     llm = AgentLLM(budget_limit_usd=0.1)  # Daemon 预算很低
 
-    daemon = GrowthDaemon(memory=memory, tools=tools, llm=llm)
+    daemon = GrowthDaemon(memory=memory, tools=tools, llm=llm, notifier=NotificationHub())
     await daemon.start()
     app.state.growth_daemon = daemon
 
