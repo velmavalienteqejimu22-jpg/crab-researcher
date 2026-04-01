@@ -248,7 +248,7 @@ class AgentLoop:
 已有专家输出: {json.dumps(list(expert_outputs.keys()), ensure_ascii=False)}
 对话轮次: {self.state.turn_count}
 
-## 你的 12 位专家
+## 你的 13 位专家
 
 你可以调度以下专家（按需唤醒，不是每次都用所有人）：
 - market_researcher: 市场研究专家（竞品分析、用户发现、行业扫描）
@@ -256,13 +256,14 @@ class AgentLoop:
 - content_strategist: 内容营销专家（SEO/AEO、博客、程序化内容）
 - social_media: 社媒运营专家（各平台策略、帖子撰写、互动策略）
 - paid_ads: 付费广告专家（各广告平台、ROAS 优化、创意测试）
-- partnerships: 合作关系专家（博主外联、商务拓展、联盟营销）
+- partnerships: 合作关系专家（博主外联、商务拓展、联盟营销、地推）
 - ai_distribution: AI 分发专家（MCP、GPT Store、AEO）
 - psychologist: 消费心理学专家（转化优化、定价心理、说服力）
 - product_growth: 产品增长专家（PLG、病毒循环、留存）
 - data_analyst: 数据分析师（KPI、漏斗分析、实验设计）
 - copywriter: 文案大师（所有文字输出的最终润色）
 - critic: 策略审核专家（验证策略一致性、预算合理性、可行性）
+- designer: 设计大佬（广告海报、社媒配图、品牌视觉、落地页设计）
 
 ## 决策指令
 
@@ -450,7 +451,7 @@ class AgentLoop:
                             "market_researcher", "economist", "content_strategist",
                             "social_media", "paid_ads", "partnerships",
                             "ai_distribution", "psychologist", "product_growth",
-                            "data_analyst", "copywriter", "critic"
+                            "data_analyst", "copywriter", "critic", "designer"
                         ]},
                         "task": {"type": "string"},
                     }

@@ -21,6 +21,17 @@ from app.agent.tools.research import WebSearchTool, ScrapeWebsiteTool, SocialSea
 from app.agent.experts import ExpertPool
 from app.agent.experts.market_researcher import MarketResearcher
 from app.agent.experts.economist import Economist
+from app.agent.experts.content_strategist import ContentStrategist
+from app.agent.experts.social_media import SocialMediaExpert
+from app.agent.experts.paid_ads import PaidAdsExpert
+from app.agent.experts.partnerships import PartnershipsExpert
+from app.agent.experts.ai_distribution import AIDistributionExpert
+from app.agent.experts.psychologist import ConsumerPsychologist
+from app.agent.experts.product_growth import ProductGrowthExpert
+from app.agent.experts.data_analyst import DataAnalyst
+from app.agent.experts.copywriter import MasterCopywriter
+from app.agent.experts.critic import StrategyCritic
+from app.agent.experts.designer import DesignExpert
 from app.agent.memory import GrowthMemory
 
 logger = logging.getLogger(__name__)
@@ -41,11 +52,21 @@ def _get_or_create_tools() -> ToolRegistry:
 
 
 def _get_or_create_experts() -> ExpertPool:
-    """创建专家池"""
+    """创建专家池 — 13 位专家"""
     pool = ExpertPool()
     pool.register(MarketResearcher())
     pool.register(Economist())
-    # TODO: 注册其余 10 位专家
+    pool.register(ContentStrategist())
+    pool.register(SocialMediaExpert())
+    pool.register(PaidAdsExpert())
+    pool.register(PartnershipsExpert())
+    pool.register(AIDistributionExpert())
+    pool.register(ConsumerPsychologist())
+    pool.register(ProductGrowthExpert())
+    pool.register(DataAnalyst())
+    pool.register(MasterCopywriter())
+    pool.register(StrategyCritic())
+    pool.register(DesignExpert())
     return pool
 
 
