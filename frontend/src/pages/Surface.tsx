@@ -46,8 +46,9 @@ export function Surface({ creature, onChat, onPlan, onSettings }: SurfaceProps) 
     <div className="min-h-screen bg-surface bg-grid bg-noise flex flex-col items-center px-4 py-8 max-w-lg mx-auto relative z-10">
       {/* 顶部栏 */}
       <div className="w-full flex items-center justify-between mb-8">
-        <div className="flex items-center gap-2">
-          <span className="text-lg font-semibold text-primary tracking-tight">CrabRes</span>
+        <div className="flex items-center gap-2.5">
+          <span className="text-xl">🦀</span>
+          <span className="font-heading font-bold text-primary tracking-tight">CrabRes</span>
         </div>
         <div className="flex items-center gap-3">
           <button className="p-2 rounded-xl hover:bg-hover transition-colors">
@@ -130,11 +131,11 @@ export function Surface({ creature, onChat, onPlan, onSettings }: SurfaceProps) 
       {/* 底部入口 */}
       <div className="w-full flex gap-3 mt-auto pt-4">
         <button onClick={onChat}
-          className="flex-1 py-3 rounded-2xl bg-brand text-white text-sm font-medium hover:bg-brand-hover transition-colors">
+          className="flex-1 py-3.5 rounded-2xl bg-brand text-white text-sm font-heading font-semibold hover:bg-brand-hover transition-all shadow-md hover:shadow-lg">
           Talk to CrabRes
         </button>
         <button onClick={onPlan}
-          className="flex-1 py-3 rounded-2xl bg-glass text-primary text-sm font-medium hover:bg-hover transition-colors border border-border">
+          className="flex-1 py-3.5 rounded-2xl card text-primary text-sm font-heading font-semibold hover:shadow-md transition-all">
           Growth Plan
         </button>
       </div>
@@ -147,10 +148,10 @@ export function Surface({ creature, onChat, onPlan, onSettings }: SurfaceProps) 
 function MetricCard({ value, label, accent }: { value: string; label: string; accent?: boolean }) {
   return (
     <div className="text-center">
-      <div className={`text-2xl font-bold tracking-tight ${accent ? 'text-brand' : 'text-primary'}`}>
+      <div className={`font-heading text-2xl font-bold tracking-tight ${accent ? 'text-brand' : 'text-primary'}`}>
         {value}
       </div>
-      <div className="text-xs text-muted mt-0.5">{label}</div>
+      <div className="text-xs text-muted mt-0.5 font-heading">{label}</div>
     </div>
   )
 }
