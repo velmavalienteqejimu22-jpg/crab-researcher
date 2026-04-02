@@ -16,12 +16,40 @@ import { generateCreature, SPECIES_CONFIG } from '../components/creature/types'
 interface LandingProps {
   onGetStarted: () => void
   onLogin: () => void
+  onCompare?: () => void
 }
 
-export function Landing({ onGetStarted, onLogin }: LandingProps) {
+export function Landing({ onGetStarted, onLogin, onCompare }: LandingProps) {
   const creatures = ['crab', 'octopus', 'jellyfish', 'pufferfish', 'seahorse'] as const
   const heroCreature = generateCreature('hero', 'saas')
   heroCreature.mood = 'happy'
+
+  // 交互式 Demo 状态
+  const [demoInput, setDemoInput] = useState('')
+  const [demoState, setDemoState] = useState<'idle' | 'searching' | 'done'>('idle')
+  const [demoResults, setDemoResults] = useState<string[]>([])
+
+  const runDemo = () => {
+    if (!demoInput.trim()) return
+    setDemoState('searching')
+    setDemoResults([])
+
+    // 模拟搜索过程（逐步显示）
+    const steps = [
+      `🔍 Searching competitors for "${demoInput.trim().slice(0, 30)}"...`,
+      `📊 Found 4 competitors with real pricing data`,
+      `💬 Scanning Reddit for user discussions...`,
+      `🧠 13 experts analyzing your market...`,
+      `✅ Growth plan ready — sign up to see the full strategy`,
+    ]
+
+    steps.forEach((step, i) => {
+      setTimeout(() => {
+        setDemoResults(prev => [...prev, step])
+        if (i === steps.length - 1) setDemoState('done')
+      }, (i + 1) * 800)
+    })
+  }
 
   return (
     <div className="min-h-screen bg-surface bg-grid bg-noise relative z-10">
@@ -57,14 +85,46 @@ export function Landing({ onGetStarted, onLogin }: LandingProps) {
           and writes every post, email, and plan — for you.
         </p>
 
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
-          <button onClick={onGetStarted}
-            className="btn-primary !text-base !py-3.5 !px-8 !rounded-xl shadow-lg hover:shadow-xl transition-shadow">
-            Start free — no credit card →
-          </button>
+        {/* 交互式 Demo 输入框 */}
+        <div className="max-w-lg mx-auto mb-6">
+          {demoState === 'idle' ? (
+            <div className="flex gap-2">
+              <input
+                value={demoInput}
+                onChange={e => setDemoInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && runDemo()}
+                placeholder="Describe your product (e.g., AI resume optimizer)"
+                className="flex-1 !rounded-xl !py-3 !text-base"
+              />
+              <button
+                onClick={demoInput.trim() ? runDemo : onGetStarted}
+                className="btn-primary !py-3 !px-6 !rounded-xl shadow-lg !text-base whitespace-nowrap"
+              >
+                {demoInput.trim() ? 'Try it →' : 'Start free →'}
+              </button>
+            </div>
+          ) : (
+            <div className="card p-4 text-left space-y-2">
+              {demoResults.map((r, i) => (
+                <div key={i} className="flex items-center gap-2 text-sm animate-fade-in"
+                  style={{ animationDelay: `${i * 0.1}s`, opacity: 0 }}>
+                  <span>{r}</span>
+                </div>
+              ))}
+              {demoState === 'done' && (
+                <button onClick={onGetStarted}
+                  className="btn-primary w-full !py-3 !rounded-xl mt-3 animate-fade-in"
+                  style={{ animationDelay: '0.5s', opacity: 0 }}>
+                  See your full growth plan — free →
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
-        <p className="text-xs text-muted">Join 300+ products growing with CrabRes</p>
+        <p className="text-xs text-muted">
+          {demoState === 'idle' ? 'Join 300+ products growing with CrabRes' : 'Real research, not templates'}
+        </p>
       </section>
 
       {/* 三个核心卖点 */}
@@ -208,6 +268,11 @@ export function Landing({ onGetStarted, onLogin }: LandingProps) {
 
       {/* Final CTA */}
       <section className="text-center px-4 pb-24 relative z-10">
+        {onCompare && (
+          <button onClick={onCompare} className="text-sm text-brand hover:underline mb-6 block mx-auto">
+            See how CrabRes compares to ChatGPT →
+          </button>
+        )}
         <h2 className="font-heading text-3xl font-bold text-primary mb-5">Stop guessing.<br />Start growing.</h2>
         <button onClick={onGetStarted}
           className="btn-primary !text-base !py-3.5 !px-8 !rounded-xl shadow-lg">

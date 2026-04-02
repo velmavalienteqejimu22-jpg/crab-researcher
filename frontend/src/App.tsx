@@ -10,6 +10,7 @@ import { Chat } from './pages/Chat'
 import { Plan } from './pages/Plan'
 import { Onboarding } from './pages/Onboarding'
 import { Landing } from './pages/Landing'
+import { Compare } from './pages/Compare'
 import { Settings } from './pages/Settings'
 import { getToken, setToken, clearToken, setAuthExpiredHandler, api } from './lib/api'
 import { generateCreature } from './components/creature/types'
@@ -154,7 +155,8 @@ function AuthPage({ onLogin }: { onLogin: () => void }) {
 
 export default function App() {
   const [authed, setAuthed] = useState(!!getToken())
-  const [showAuth, setShowAuth] = useState(false) // 显示登录还是 Landing
+  const [showAuth, setShowAuth] = useState(false)
+  const [showCompare, setShowCompare] = useState(false)
   const [onboarded, setOnboarded] = useState(!!localStorage.getItem('crabres_onboarded'))
   const [page, setPage] = useState<'surface' | 'chat' | 'plan' | 'settings'>('surface')
   const [userId, setUserId] = useState('default')
@@ -202,7 +204,10 @@ export default function App() {
     if (showAuth) {
       return <AuthPage onLogin={() => { setAuthed(true); setShowAuth(false) }} />
     }
-    return <Landing onGetStarted={() => setShowAuth(true)} onLogin={() => setShowAuth(true)} />
+    if (showCompare) {
+      return <Compare onGetStarted={() => { setShowCompare(false); setShowAuth(true) }} onBack={() => setShowCompare(false)} />
+    }
+    return <Landing onGetStarted={() => setShowAuth(true)} onLogin={() => setShowAuth(true)} onCompare={() => setShowCompare(true)} />
   }
 
   // 未完成 onboarding

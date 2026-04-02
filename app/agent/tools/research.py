@@ -23,35 +23,40 @@ class WebSearchTool(BaseTool):
     def definition(self) -> ToolDefinition:
         return ToolDefinition(
             name="web_search",
-            description="Search the internet for current information. Use for: finding competitors, market data, industry trends, user discussions, news. Returns structured results with titles, URLs and content snippets.",
+            description="Search the internet for current information. Use for: finding competitors, market data, industry trends, user discussions, news. Supports multi-language and global search.",
             parameters={
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "Search query in English for best results"},
+                    "query": {"type": "string", "description": "Search query. Can be in English or Chinese."},
                     "num_results": {"type": "integer", "default": 5, "description": "Number of results (1-10)"},
                     "search_depth": {"type": "string", "enum": ["basic", "advanced"], "default": "basic",
                                      "description": "basic=fast, advanced=deeper research"},
+                    "include_domains": {"type": "array", "items": {"type": "string"}, "description": "Filter results by domains"},
                 },
                 "required": ["query"],
             },
             concurrent_safe=True,
         )
 
-    async def execute(self, query: str, num_results: int = 5, search_depth: str = "basic") -> Any:
+    async def execute(self, query: str, num_results: int = 5, search_depth: str = "basic", include_domains: list[str] | None = None) -> Any:
         if not settings.TAVILY_API_KEY or settings.TAVILY_API_KEY.startswith('填'):
             # Fallback: 没有 Tavily key 时用简单 httpx 搜索
             return await self._fallback_search(query)
 
         try:
+            payload = {
+                "api_key": settings.TAVILY_API_KEY,
+                "query": query,
+                "search_depth": search_depth,
+                "max_results": min(num_results, 10),
+                "include_answer": True,
+                "include_raw_content": False,
+            }
+            if include_domains:
+                payload["include_domains"] = include_domains
+
             async with httpx.AsyncClient(timeout=30) as client:
-                resp = await client.post(TAVILY_URL, json={
-                    "api_key": settings.TAVILY_API_KEY,
-                    "query": query,
-                    "search_depth": search_depth,
-                    "max_results": min(num_results, 10),
-                    "include_answer": True,
-                    "include_raw_content": False,
-                })
+                resp = await client.post(TAVILY_URL, json=payload)
                 resp.raise_for_status()
                 data = resp.json()
 
@@ -145,14 +150,14 @@ class SocialSearchTool(BaseTool):
     def definition(self) -> ToolDefinition:
         return ToolDefinition(
             name="social_search",
-            description="Search social media platforms for discussions about a topic. Searches Reddit, X/Twitter, HackerNews, ProductHunt. Use for: finding target users, understanding pain points, discovering communities.",
+            description="Search social media platforms for discussions. Supports global (Reddit, X, HN) and domestic (Xiaohongshu, Jike, Bilibili, Zhihu) platforms. Use for: finding target users, pain points, and communities.",
             parameters={
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "Topic to search for"},
                     "platforms": {
                         "type": "array",
-                        "items": {"type": "string", "enum": ["reddit", "x", "hackernews", "producthunt", "linkedin"]},
+                        "items": {"type": "string", "enum": ["reddit", "x", "hackernews", "producthunt", "linkedin", "xiaohongshu", "jike", "bilibili", "zhihu"]},
                         "default": ["reddit", "hackernews"],
                         "description": "Which platforms to search",
                     },
@@ -171,6 +176,10 @@ class SocialSearchTool(BaseTool):
             "hackernews": "news.ycombinator.com",
             "producthunt": "producthunt.com",
             "linkedin": "linkedin.com",
+            "xiaohongshu": "xiaohongshu.com",
+            "jike": "okjike.com",
+            "bilibili": "bilibili.com",
+            "zhihu": "zhihu.com",
         }
 
         domains = " OR ".join(f"site:{domain_map[p]}" for p in platforms if p in domain_map)
