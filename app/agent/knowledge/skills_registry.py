@@ -65,89 +65,136 @@ EXPERT_KNOWLEDGE: dict[str, list[dict[str, str]]] = {
 
     "economist": [
         {
-            "name": "pricing_strategy",
-            "source": "coreyhaines31/marketingskills + psychology",
-            "description": "定价策略和心理学框架",
-            "framework": """定价心理:
-- 魅力定价: $99 < $100（左位效应）
-- 100法则: <$100 用百分比折扣, >$100 用绝对折扣
-- 好-更好-最好: 三层定价，中间层是目标
-- 诱饵效应: 添加较差的第三选项使首选更吸引
-- 心理账户: "$3/天" < "$90/月"（感知不同）
-- 免费的力量: $0→$1 的跳跃远大于 $1→$2
+            "name": "pricing_and_unit_economics",
+            "source": "SaaS pricing benchmarks 2026 + behavioral economics research",
+            "description": "定价策略、单位经济、预算分配（实战级）",
+            "framework": """=== PRICING & UNIT ECONOMICS PRACTITIONER KNOWLEDGE ===
 
-单位经济分析:
-- CAC = 总获客成本 / 新客户数
-- LTV = ARPU × 平均生命周期
-- LTV/CAC > 3 = 健康
-- 回收期 = CAC / 月收入/用户""",
+## Pricing Psychology (proven tactics)
+- Charm pricing: $99 < $100 (left-digit effect, 8-12% conversion lift)
+- Rule of 100: <$100 use percentage discount, >$100 use absolute discount
+- Good-Better-Best: 3-tier pricing, middle tier = target (65% choose middle)
+- Decoy effect: add inferior 3rd option to make preferred option look better
+- Mental accounting: "$3/day" feels cheaper than "$90/month"
+- Free→$1 jump: 10x bigger barrier than $1→$2. Free tier is strategic, not generous.
+- Reverse trial (2026 trend): give FULL premium access → downgrade after 14 days. Loss aversion = 3x more likely to pay vs standard free→paid.
+- Annual discount: offer 2 months free on annual plan (20% discount standard)
+
+## Unit Economics (must-know formulas)
+CAC = Total acquisition cost / New customers
+LTV = ARPU x Average customer lifetime (months)
+LTV:CAC ratio: >3:1 = healthy, <1:1 = bleeding money
+Payback period = CAC / Monthly revenue per user
+Quick ratio = (New MRR + Expansion MRR) / (Churned MRR + Contraction MRR). >4 = elite.
+Magic number = Net new ARR / Sales & marketing spend. >0.75 = efficient.
+
+## Budget Allocation Framework
+For startups (<$1K/month marketing budget):
+- 60% Content + Community (Reddit/X/小红书 — free labor, high ROI)
+- 20% Tools (analytics, email, design — Canva/Mailchimp/GA)
+- 20% Experiments (small ad tests, influencer micro-collabs)
+- 0% on anything you can't measure
+
+For growth stage ($1K-10K/month):
+- 40% Paid ads (after organic proves product-market fit)
+- 30% Content + SEO (long-term flywheel)
+- 20% Influencer/partnerships
+- 10% Experimentation
+
+## Flywheel Economics
+- Identify actions with COMPOUNDING returns (content SEO = flywheel, paid ads = treadmill)
+- Every $1 should ideally generate >$1 in lifetime value AND make the next $1 more efficient
+- Content + SEO: costs upfront, traffic compounds over months. After 6 months, CAC approaches $0.
+- Paid ads: linear — stop spending = stop getting users. Use for acceleration, not foundation.
+- Referral: viral coefficient k. If k>1, exponential growth. Even k=0.5 means each user brings 0.5 more.
+
+## When to spend vs save
+- Pre-PMF: spend $0 on marketing. Talk to users. Validate manually.
+- Post-PMF (<100 users): content + community only. Prove organic works.
+- Growth (100-1000 users): start testing paid channels with $20-50/test
+- Scale (1000+ users): shift budget to highest-ROI channel. Kill everything else.""",
         },
     ],
 
     "content_strategist": [
         {
-            "name": "keyword_research",
-            "source": "aaron-he-zhu/seo-geo-claude-skills (2.3K installs)",
-            "description": "关键词研究和主题集群",
-            "framework": """步骤:
-1. 种子关键词 → 扩展为关键词宇宙
-2. 按搜索意图分组: informational / navigational / commercial / transactional
-3. 评估: 搜索量 × 竞争度 × 和产品的相关度
-4. 建立主题集群: 1个支柱页面 + N个集群页面
-5. 内容优先级: 高相关+低竞争优先""",
-        },
-        {
-            "name": "seo_audit",
-            "source": "addyosmani/web-quality-skills (4.8K installs)",
-            "description": "SEO + AI 搜索优化审计",
-            "framework": """38 点审计:
-- 技术 SEO: 页面速度、移动适配、Schema 标记
-- 内容结构: H1/H2 层级、FAQ 区块、对比表
-- AI/GEO 准备度: 结构化数据、可引用答案、FAQ Schema
-- E-E-A-T: 经验、专业性、权威性、可信度""",
-        },
-        {
-            "name": "geo_optimization",
-            "source": "CrabRes 2026 + Averi.ai research",
-            "description": "GEO - 生成引擎优化（让 AI 搜索引擎引用你）",
-            "framework": """GEO (Generative Engine Optimization) — 2026 年最重要的新渠道
+            "name": "seo_geo_aeo_2026",
+            "source": "Lumar/Arcalea SEO experts 2026 + programmatic SEO research",
+            "description": "SEO + GEO + AEO 三位一体内容策略（2026 实战）",
+            "framework": """=== SEO / GEO / AEO CONTENT STRATEGY 2026 ===
 
-什么是 GEO:
-让 ChatGPT、Perplexity、Google AI Overviews 在回答用户问题时引用你的内容。
-Peter Levels 发现 AI 推荐流量一个月内从 4% 跃升到 20%。
+## The Three Pillars (2026)
+1. SEO (Search Engine Optimization): rank in Google/Bing traditional results
+2. GEO (Generative Engine Optimization): get cited by ChatGPT/Perplexity/Google AI Overview
+3. AEO (Answer Engine Optimization): get featured in snippets, knowledge panels, voice search
 
-优化方法:
-1. 结构化答案格式:
-   - 每篇文章开头直接给出结论（不要废话导入）
-   - 使用 FAQ 格式（Question → Direct Answer）
-   - 包含对比表（AI 特别喜欢引用表格数据）
-   - 使用确切数字和数据（"228.8亿元" > "数百亿"）
+In 2026, all three matter. Peter Levels: AI referral traffic went from 4% to 20% in one month.
 
-2. Schema 标记:
-   - FAQPage schema 让 AI 能解析你的问答
-   - Product schema 让 AI 知道你的定价和功能
-   - HowTo schema 让 AI 引用你的步骤指南
-   - Comparison schema 让 AI 引用你的对比数据
+## SEO Fundamentals (still the foundation)
+Keyword research:
+1. Seed keywords → expand to keyword universe
+2. Classify by intent: informational / navigational / commercial / transactional
+3. Evaluate: search volume x competition x product relevance
+4. Build topic clusters: 1 pillar page + N cluster pages
+5. Priority: high relevance + low competition FIRST
 
-3. 内容结构:
-   - H2 用问题形式（"What is the best X for Y?"）
-   - 每个 H2 下面第一句话直接回答（无需铺垫）
-   - 列举式内容（numbered lists）比段落更容易被引用
-   - 包含 "as of 2026" 时间标记（AI 偏爱新鲜内容）
+Technical SEO checklist:
+- Page speed <2.5s LCP (Core Web Vitals)
+- Mobile-first (responsive)
+- Clean URL structure (/category/keyword)
+- Internal linking (every page linked from at least 2 others)
+- XML sitemap + robots.txt
+- HTTPS mandatory
+- Schema markup (FAQ, Product, HowTo, Comparison)
 
-4. 引用建设:
-   - 被高权威网站引用的内容更容易被 AI 推荐
-   - 在 Reddit/HN/StackOverflow 上回答问题并链接回你的文章
-   - 创建"唯一来源"数据（原创研究/调查/基准测试）
+## GEO — Getting Cited by AI (the 2026 gold rush)
+How to make ChatGPT/Perplexity cite your content:
 
-5. 对比页面（GEO 金矿）:
-   - "X vs Y" 页面是 AI 最常引用的页面类型
-   - 包含功能对比表 + 定价对比 + 适用场景
-   - 诚实评价（不贬低竞品，AI 会检测偏见）
+1. Structure content as direct answers:
+   - H2 as questions ("What is the best X for Y?")
+   - First sentence after H2 = direct answer (no preamble)
+   - Include specific numbers and data
+   - Add "as of 2026" timestamps (AI prefers fresh content)
 
-衡量:
-- 在 ChatGPT/Perplexity 中搜索你的关键词，看是否引用你
-- 追踪来自 AI 搜索引擎的流量（GA4 的 referral 中看 chat.openai.com 等）""",
+2. Create "sole source" data:
+   - Original research/surveys (AI LOVES citing unique data)
+   - Benchmark reports
+   - Comparison tables with real pricing/features
+   - "We tested X products" type content
+
+3. Schema markup for AI:
+   - FAQPage schema → AI can parse your Q&A
+   - Product schema → AI knows your pricing/features
+   - HowTo schema → AI cites your step guides
+   - Comparison schema → AI cites your comparison data
+
+4. Get cited by high-authority sites:
+   - Reddit/HN answers linking to your content
+   - Guest posts on industry blogs
+   - Be a source for journalists (HARO/Connectively)
+
+## AEO — Featured Snippets & Voice
+- Target question-based keywords ("how to", "what is", "best X for Y")
+- Answer in <50 words for snippet eligibility
+- Use numbered lists and tables (snippet-friendly formats)
+- FAQ blocks on every important page
+
+## Programmatic SEO (scale to 1000+ pages)
+Pattern: [category] + [modifier] = unique page
+Examples:
+  "best [product] alternatives" → 500+ pages
+  "[brand A] vs [brand B]" → 2000+ pages
+  "[product] pricing 2026" → 1000+ pages
+
+Execution: structured data + LLM content generation + manual quality review
+Cost: ~$0.01-0.05 per page with DeepSeek. 10,000 pages = $100-500.
+
+## Content Calendar
+- 1 pillar page per month (3000+ words, comprehensive)
+- 4 cluster pages per month (1000-1500 words each)
+- 2 comparison pages per month (X vs Y)
+- Weekly blog post (800-1200 words, topical)
+- Repurpose everything: blog → X thread → 小红书笔记 → LinkedIn post""",
         },
     ],
 
@@ -577,202 +624,415 @@ Reddit doesn't support clean UTM tracking. Use multi-signal approach:
 
     "partnerships": [
         {
-            "name": "product_hunt_launch",
-            "source": "inferen-sh/skills (8.1K installs)",
-            "description": "Product Hunt 发布完整策略",
-            "framework": """发布前(2周):
-- 准备 Gallery (5张截图+1个视频)
-- 写好 tagline (60字符内)、description、first comment
-- 联系 5-10 个 Hunter 找人帮你 Hunt
-- 在社媒预热
+            "name": "influencer_kol_outreach_sop",
+            "source": "MySocial/Sprout Social/KolSprite 2026 + 蒲公英平台数据",
+            "description": "KOL/博主合作完整 SOP（发现→评估→外联→合作→追踪）",
+            "framework": """=== KOL/INFLUENCER COLLABORATION SOP ===
 
-发布日:
-- 太平洋时间 00:01 发布
-- 第一条评论: 创始人故事+为什么做这个
-- 当天持续回复每一条评论
-- 社媒同步推广
+## Discovery (找人)
+1. Define ICP (Ideal Creator Profile):
+   - Follower range: 1K-10K (micro, highest ROI) / 10K-100K (mid, best reach/cost balance) / 100K+ (macro, brand awareness)
+   - Engagement rate threshold: >3% Instagram, >5% TikTok, >1% YouTube
+   - Audience overlap with your target: >50% match
+   - Content style must fit your brand naturally
 
-发布后:
-- 给所有评论者发感谢邮件
-- 把 PH badge 加到网站
-- 发布复盘帖子""",
+2. Where to find creators:
+   - Platform native: Instagram Explore, TikTok Creator Marketplace, YouTube search
+   - Tools: Modash.io, Heepsy, Upfluence, CreatorIQ
+   - Competitor analysis: who are your competitors working with? (check their tagged posts)
+   - Hashtag mining: search #[your niche] and find creators posting there
+   - 小红书: 蒲公英平台 (official), 蝉妈妈/飞瓜 (third-party data)
+
+3. Vetting checklist (MUST check before outreach):
+   ✅ Engagement rate (likes+comments / followers > 3%)
+   ✅ Comment quality (real conversations vs "nice!" / emoji spam)
+   ✅ Audience demographics (age/gender/location match your target?)
+   ✅ Recent content quality and frequency (active? declining?)
+   ✅ Brand safety: scan last 6 months for controversy, political takes, competitor deals
+   ✅ Fake follower check (sudden spikes in follower count = bought followers)
+   ❌ SKIP creators with: >50% ads in recent posts, bought followers, recent controversy
+
+## Outreach (联系)
+Tiered approach:
+- Micro (1K-10K): DM first, then email. Offer free product. No payment needed for most.
+- Mid (10K-100K): Email with personalized pitch. Product + $200-1000 fee.
+- Macro (100K+): Through agent/manager. Product + $1000-10000+.
+
+Email template structure (under 150 words!):
+  Line 1: Reference their SPECIFIC recent content (proves you actually watched)
+  Line 2: One sentence about your product
+  Line 3: Specific offer (free product, fee, commission)
+  Line 4: No-pressure CTA ("Would you be open to trying it?")
+
+Follow-up: Day 3-5 (different angle, NOT "just checking in"). Max 1 follow-up.
+
+## Collaboration (执行)
+- Send product with: branded packaging + handwritten note + content brief
+- Content brief must include: key messages (max 3), hashtags, tracking link/promo code, deadline, format preference
+- Set up UTM links or unique promo codes per creator (essential for ROI tracking)
+- Don't over-script: let creator maintain their authentic voice
+
+## Tracking & ROI
+- Track per creator: views, engagement, link clicks, promo code uses, conversions
+- Calculate CPA per creator = (product cost + fee + shipping) / conversions
+- Compare across tiers: micro vs mid vs macro ROI
+- Top performers → long-term relationship → ambassador program
+- Underperformers → analyze why, don't repeat
+
+## Pricing Reference (2026)
+Instagram post: micro $50-300, mid $300-2000, macro $2000-20000
+TikTok video: micro $100-500, mid $500-5000, macro $5000-50000
+YouTube video: micro $200-1000, mid $1000-10000, macro $10000-100000
+小红书笔记: 素人¥50-200, KOC¥200-1000, 腰部¥1000-10000, 头部¥10000+""",
         },
         {
-            "name": "influencer_outreach",
-            "source": "dengineproblem/agents-monorepo (79 installs)",
-            "description": "博主外联策略",
-            "framework": """发现:
-- 搜索 YouTube/Twitter/博客中讨论相关话题的人
-- 优先 1K-10K 粉丝（小博主回复率高、性价比好）
-- 评估: 受众匹配度、互动率、内容质量
+            "name": "product_hunt_launch_sop",
+            "source": "inferen-sh/skills + 2026 PH best practices",
+            "description": "Product Hunt 发布完整策略",
+            "framework": """=== PRODUCT HUNT LAUNCH SOP ===
 
-外联:
-- 邮件主题行: 具体+个人化（不要"合作邀请"）
-- 第一句: 证明你看过对方的内容
-- 价值交换: 你能给对方什么
-- CTA: 一个明确的下一步
+Pre-launch (2-4 weeks before):
+- Build email list of supporters (aim 200+ for launch day votes)
+- Prepare Gallery: 5 screenshots + 1 demo video (30-60 sec)
+- Write tagline (60 chars max): benefit-focused, not feature-focused
+- Write description (260 chars): who it's for + what it does + why it's different
+- Write first comment (the story): why you built this, personal journey, what's next
+- Find a Hunter (someone with 1000+ followers to submit for you) — check PH leaderboard
+- Schedule launch for Tuesday (highest traffic day), 12:01 AM PST
 
-合作模式:
-- 免费试用换评测（成本最低）
-- 赞助内容（$100-1000 per post for small creators）
-- 分佣/联盟（长期关系）""",
+Launch day:
+- Post at 00:01 PST (Pacific Time)
+- First comment ready immediately (founder story + ask for feedback)
+- Reply to EVERY comment within 1 hour (engagement signal to PH algorithm)
+- Social media blitz: X thread + LinkedIn + email to list + Discord/Slack communities
+- Keep engagement high for first 4 hours (PH ranking is velocity-based)
+
+Post-launch:
+- Thank everyone who commented (DM or email)
+- Add PH badge to your website
+- Write a launch retrospective (great content for X/LinkedIn)
+- Follow up with anyone who offered to connect""",
         },
     ],
 
     "paid_ads": [
         {
-            "name": "ad_campaign_framework",
-            "source": "openclaudia + superamped",
-            "description": "广告投放框架",
-            "framework": """测试流程:
-1. 小额测试($20-50): 3组创意 × 2组受众
-2. 72小时后分析: CPC、CTR、转化率
-3. 砍掉最差的，放大最好的
-4. 持续迭代
+            "name": "paid_ads_complete_sop",
+            "source": "Meta Ads 2026 guides + Buffer + Adsmurai specs",
+            "description": "付费广告投放完整 SOP（平台选择→创意→测试→放大→优化）",
+            "framework": """=== PAID ADVERTISING COMPLETE SOP ===
 
-创意角度(5种):
-- Problem: 展示痛点
-- Solution: 展示结果
-- Comparison: 和替代方案对比
-- Proof: 用户案例/数据
-- Curiosity: 激发好奇心
+## Platform Selection (which platform for which product)
+- Meta (Facebook+Instagram): best for B2C, visual products, lifestyle. Broad targeting works now (Advantage+ AI).
+- Google Ads: best for high-intent searches ("buy X", "X near me"). Expensive but high conversion.
+- TikTok Ads: best for Gen Z, entertaining/visual products. Cheapest CPM but lower intent.
+- Reddit Ads: cheapest CPM ($0.50-2). Good for niche targeting by subreddit. Low competition.
+- LinkedIn Ads: best for B2B. Most expensive ($8-12 CPC) but highest lead quality.
+- Pinterest Ads: underrated for e-commerce/lifestyle. Long ad lifespan (pins live for months).
 
-预算低于$500/月的建议:
-- 不做 Google Ads（CPC 太贵）
-- Reddit Ads 最便宜（CPM $0.5-2）
-- 或者完全不做广告，把钱投到内容/合作上""",
+## Creative Production
+Ad sizes cheat sheet:
+  Meta: 1080x1080 (feed), 1080x1350 (feed vertical), 1080x1920 (stories/reels)
+  Google Display: 1200x628 (landscape), 300x250 (rectangle)
+  TikTok: 1080x1920 (full screen vertical)
+  LinkedIn: 1200x627 (single image), 1080x1080 (carousel)
+  Pinterest: 1000x1500 (standard pin), 1080x1920 (idea pin)
+
+5 creative angles (test all):
+1. PROBLEM: Show the pain ("Tired of X?") — emotional hook
+2. SOLUTION: Show the result ("From X to Y in Z days") — aspirational
+3. SOCIAL PROOF: Show others using it ("10,000 users trust...") — trust
+4. COMPARISON: Side-by-side with competitor/old way — logical
+5. UGC-STYLE: Looks like organic content, not an ad — highest CTR in 2026
+
+Video ad rules:
+- Hook in first 3 seconds (or user scrolls past)
+- 15-30 seconds optimal length
+- Captions mandatory (85% watch without sound)
+- CTA at end AND as text overlay throughout
+- UGC style > polished studio (2-3x higher CTR on Meta/TikTok)
+
+## Testing Framework
+Phase 1 (test): $20-50 per ad set, 72 hours, DON'T TOUCH
+  - 3 audiences x 3 creatives = 9 ad sets
+  - Automatic bidding (let algorithm learn)
+  - Measure: CPA, CTR, ROAS
+
+Phase 2 (analyze): after 72 hours
+  - Kill bottom 50% (be ruthless)
+  - Identify: which audience? which creative? which placement?
+  - Don't average — look at individual ad set performance
+
+Phase 3 (scale): increase budget 20% every 3 days on winners
+  - Create variations of winning creative (same angle, new visuals)
+  - Add lookalike audiences based on converters
+  - Monitor CPA — if it rises >50% above test phase, pause and refresh creative
+
+## Budget Rules
+- <$500/month: probably don't do paid ads. Use organic channels.
+- $500-2000/month: test ONE platform thoroughly. Don't spread thin.
+- $2000-10000/month: primary platform + one secondary test
+- Never spend >50% of budget on unproven creative
+
+## Tracking Setup (DO THIS FIRST or you waste money)
+1. Install Meta Pixel / Google Tag / TikTok Pixel on your site
+2. Set up conversion events: PageView, AddToCart, Purchase/Signup
+3. Create UTM parameters for each campaign
+4. Verify events fire correctly (test purchase)
+5. Wait 3-7 days for pixel to collect data before optimizing""",
         },
     ],
 
     "designer": [
         {
-            "name": "social_design",
-            "source": "eachlabs/skills (432 installs) + 404kidwiz",
-            "description": "社媒视觉设计规范",
-            "framework": """尺寸速查:
-- Instagram: 1080×1080 (方) / 1080×1350 (竖)
-- Twitter/X: 1200×675
-- LinkedIn: 1200×627
-- Facebook: 1200×630
-- YouTube 缩略图: 1280×720
-- TikTok 封面: 1080×1920
+            "name": "ad_creative_design_sop",
+            "source": "mediacheatsheet.com + Adsmurai specs + UGC best practices 2026",
+            "description": "广告创意与社媒视觉设计实战（尺寸+原则+UGC+工具）",
+            "framework": """=== CREATIVE DESIGN PRACTITIONER KNOWLEDGE ===
 
-设计原则:
-- 3秒法则: 最重要的信息最大最醒目
-- 移动优先: 字号至少 24px
-- 品牌一致: 固定色板(最多3色) + 固定字体
-- 对比度: 文字和背景对比度 > 4.5:1
+## Platform Ad Specs (2026, always verify on platform)
+Meta (Facebook/Instagram):
+  Feed: 1080x1080 (square) or 1080x1350 (vertical, recommended)
+  Stories/Reels: 1080x1920 (9:16)
+  Carousel: 1080x1080 per card
+  Text overlay: <20% of image area (algorithm penalizes text-heavy)
 
-非设计师执行方案:
-- Canva: 直接用模板，改文字和颜色
-- Figma: 社区模板
-- AI 生图: DALL-E/Midjourney/Ideogram
-- 截图工具: 产品截图 + 浏览器 mockup""",
+X (Twitter): 1200x675 (16:9) or 1080x1080
+Google Display: 1200x628, 300x250, 728x90 (responsive display ads preferred)
+YouTube: 1920x1080 (video), 1280x720 (thumbnail)
+TikTok: 1080x1920 (9:16 ONLY), video 15-60 sec
+LinkedIn: 1200x627 (single), 1080x1080 (carousel)
+Pinterest: 1000x1500 (2:3), 1080x1920 (9:16 idea pin)
+小红书: 1080x1440 (3:4), cover image CRITICAL for CTR
+
+## Design Principles (non-negotiable)
+1. 3-SECOND RULE: Most important info = biggest + most visible
+2. MOBILE-FIRST: 85% of social media is mobile. Min font 24px.
+3. BRAND CONSISTENCY: Max 3 colors + 1-2 fonts across all materials
+4. CONTRAST: Text-to-background contrast ratio >4.5:1 (WCAG AA)
+5. HIERARCHY: Eye path should go: Hook → Value → CTA
+6. WHITE SPACE: Don't cram. Breathing room = premium feel.
+
+## UGC (User-Generated Content) — 2026's highest-performing ad format
+- UGC ads outperform studio ads 2-3x on CTR (Meta/TikTok data)
+- Why: looks organic in feed, triggers trust, doesn't feel like an ad
+- How to create:
+  1. Use iPhone (not professional camera)
+  2. Natural lighting (no studio setup)
+  3. Person talking to camera or showing product in real use
+  4. Captions always (auto-caption tools: CapCut, Descript)
+  5. First 3 sec = hook ("I've been using X for 30 days and...")
+  6. 15-30 sec total
+  7. End with clear CTA ("Link in bio" / "Comment for link")
+
+## Tools for non-designers
+Image: Canva (templates), Figma (community files), Midjourney/DALL-E (concept art)
+Video: CapCut (editing + captions), Descript (podcast→video), Loom (screen record)
+Mockups: Shots.so (app screenshots), Smartmockups (product in context)
+Batch creation: Canva Bulk Create, Bannerbear (API-based)
+
+## Creative Refresh Cadence
+- Ads fatigue after 7-14 days (CTR drops, CPA rises)
+- Refresh creative weekly: same angle + new visuals/copy
+- Keep winning hooks, change everything else
+- Archive all creatives with performance data for future reference""",
         },
     ],
 
     "product_growth": [
         {
-            "name": "growth_loops",
-            "source": "openclaudia + vasilyu1983",
-            "description": "增长循环和病毒机制",
-            "framework": """常见增长循环:
-1. 内容循环: 内容→流量→注册→使用→产出内容→更多流量
-2. 推荐循环: 用户→邀请→新用户→邀请（病毒系数 k>1 = 指数增长）
-3. 数据循环: 更多用户→更好数据→更好产品→更多用户
-4. 市场循环: 卖家→买家→更多卖家→更多买家
+            "name": "plg_playbook_2026",
+            "source": "PLG 7-layer guide 2026 + IdeaPlan + Beancount",
+            "description": "产品驱动增长完整体系（激活→留存→病毒→扩张）",
+            "framework": """=== PRODUCT-LED GROWTH (PLG) 2026 PLAYBOOK ===
 
-激活检查清单:
-- 注册后多少步到"啊哈时刻"？（目标: <3步）
-- 首次体验是否展示了核心价值？
-- 有没有引导/教程？
-- 空状态是否有意义？""",
+## The PLG Flywheel
+Acquire → Activate → Engage → Monetize → Expand → Advocate → (back to Acquire)
+Each stage feeds the next. The product IS the growth engine.
+
+## Activation (most important metric for early-stage)
+Activation = user reaches "Aha Moment" (first time they get real value)
+- Map your activation path: signup → [step 1] → [step 2] → Aha Moment
+- Goal: <3 steps from signup to value
+- Measure: % of signups who reach Aha Moment within first session
+- Industry benchmark: 20-40% activation rate = good for SaaS
+
+Onboarding checklist:
+1. Zero-friction signup (email/Google only, no credit card, no phone)
+2. First value in <60 seconds (show the magic before asking for anything)
+3. Guided tour (interactive > video > static text)
+4. Empty states that educate (don't show blank screens)
+5. Progress indicator (humans complete things that look almost done)
+6. Contextual tips (show features when relevant, not all at once)
+
+## Retention
+- Day 1 retention: did they come back the next day?
+- Week 1 retention: did they use it 3+ times in first week?
+- 30-day retention: benchmark varies, but >40% = strong
+
+Retention tactics:
+1. Behavioral email triggers (NOT newsletters):
+   - "You haven't tried [feature] yet" (day 3)
+   - "Your [metric] improved 23% this week" (weekly)
+   - "You're on a 5-day streak!" (engagement gamification)
+2. Push notifications (sparingly): only for high-value events
+3. Habit loops: tie product usage to existing daily routine
+4. Social features: invite team, share results, collaborate
+
+## Viral Loops
+Types:
+1. Inherent virality: using the product creates exposure (e.g., Calendly link in emails)
+2. Word of mouth: product is so good people tell others (NPS > 50)
+3. Incentivized referral: give both referrer and referee something
+4. Content virality: user-generated output is shareable (e.g., Spotify Wrapped)
+
+Viral coefficient (k) = invitations per user x conversion rate of invites
+k > 1 = exponential growth (extremely rare)
+k = 0.5 = each user brings 0.5 more (still very valuable, 50% cheaper CAC)
+
+Referral program design:
+- Double-sided reward (giver AND receiver get value)
+- Reward should be product-related (free months > random swag)
+- Make sharing frictionless (1-click invite, pre-written message)
+- Show progress ("3 friends invited, 2 more for premium month")
+
+## Expansion Revenue
+- Usage-based pricing: charge more as they use more (natural expansion)
+- Seat-based: each new team member = revenue
+- Feature gating: free tier → paid features (but free must be genuinely useful)
+- Annual plans: offer 20% discount for annual commitment (reduces churn, improves cash flow)
+
+## Key Metrics Dashboard
+- Activation rate: signups → Aha Moment
+- Time to value: how long from signup to first value
+- Feature adoption: % using each key feature
+- Retention: D1/D7/D30 curves
+- NPS: >50 = viral potential
+- Expansion rate: revenue growth from existing users
+- Quick ratio: (new + expansion MRR) / (churned + contraction MRR)""",
         },
     ],
 
     "ai_distribution": [
         {
             "name": "mcp_server_strategy",
-            "source": "CrabRes 自研",
-            "description": "MCP 服务器获客策略",
-            "framework": """步骤:
-1. 确定产品能回答什么问题
-2. 设计 MCP tools（3-5个核心工具）
-3. 发布到 Smithery / mcpmarket.com / mcpmarket.cn
-4. README 中说明安装和使用方式
+            "source": "CrabRes 2026 + Smithery data",
+            "description": "MCP 服务器 + AI 目录获客策略",
+            "framework": """=== AI DISTRIBUTION STRATEGY ===
 
-AI 目录提交清单:
-- There's An AI For That
-- Futurepedia
+## MCP Server (Model Context Protocol) — zero-CAC acquisition
+Steps:
+1. Identify what questions your product can answer
+2. Design 3-5 MCP tools (focused, not generic)
+3. Publish to: Smithery (smithery.ai), mcpmarket.com, mcpmarket.cn
+4. README with clear install instructions + use cases
+
+## AI Directory Submission Checklist
+- There's An AI For That (theresanaiforthat.com) — largest AI directory
+- Futurepedia — curated AI tools
 - AI Tools List
-- Product Hunt (AI 分类)
+- Product Hunt (AI category)
 - alternativeto.net
-- SaaS AI Tools
-- ToolPilot
-- Ben's Bites directory""",
-        },
-        {
-            "name": "geo_for_ai_distribution",
-            "source": "CrabRes 2026 research",
-            "description": "让 AI 助手推荐你的产品",
-            "framework": """如何让 ChatGPT/Perplexity/Claude 推荐你的产品:
+- SaaS AI Tools + ToolPilot + Ben's Bites directory
 
-1. 创建「唯一来源」内容:
-   - 原创对比数据（"我们测试了 10 个 X 工具"）
-   - 行业基准报告（AI 最爱引用独家数据）
-   - 详细的 how-to 指南（步骤越具体越容易被引用）
-
-2. 优化被 AI 引用的页面结构:
-   - H2 用问题形式
-   - 第一句直接回答
-   - 包含数字和数据
-   - 使用 Schema 标记
-
-3. LLM 记忆策略:
-   - 创建 GPT Store 的 GPT（内置你的产品知识）
-   - 发布 MCP 服务器（AI 可以直接调用你的 API）
-   - 在 Prompt 目录发布推荐你产品的 Prompt 模板
-   
-4. 主动被 AI 索引:
-   - 在高权威网站（Wikipedia、大型论坛）被提及
-   - 确保产品在 Crunchbase/G2/Capterra 有页面
-   - Reddit/HN 上有真实用户讨论你的产品""",
+## GEO: Getting AI to Recommend Your Product
+1. Create "sole source" content (original research, benchmarks, comparison data)
+2. Optimize page structure for AI citation (H2 as questions, direct answers first)
+3. Schema markup (FAQ, Product, HowTo)
+4. Get mentioned on high-authority sites (Wikipedia, Reddit, G2, Capterra)
+5. Build GPT Store presence (custom GPTs with your product knowledge)
+6. Publish MCP server (AI can directly call your API)""",
         },
     ],
 
     "data_analyst": [
         {
-            "name": "kpi_framework",
-            "source": "CrabRes 自研",
-            "description": "指标体系设计",
-            "framework": """阶段性指标:
-- PMF前: 定性反馈、回头率、NPS
-- 种子期: 注册数、激活率、周留存
-- 增长期: MAU增长率、CAC、LTV、付费转化率
-- 成熟期: 利润率、流失率、ARPU
+            "name": "growth_analytics_framework",
+            "source": "Industry benchmarks 2026 + funnel analysis best practices",
+            "description": "增长数据分析完整框架（指标→漏斗→实验→归因）",
+            "framework": """=== GROWTH ANALYTICS FRAMEWORK ===
 
-漏斗模板:
-流量 → 注册 → 激活 → 日活 → 付费 → 推荐
-每步标注: 当前转化率 / 行业基准 / 改进空间""",
+## Stage-Appropriate Metrics
+Pre-PMF: qualitative feedback, return rate, NPS, willingness to pay
+Seed (0-100 users): signups, activation rate, D7 retention
+Growth (100-1000): MAU growth rate, CAC, LTV, paid conversion
+Scale (1000+): profit margin, churn rate, ARPU, expansion revenue
+
+## Funnel Template
+Traffic → Signup → Activation → Active (D7) → Paid → Referral
+For each step: current rate / industry benchmark / gap / improvement hypothesis
+
+Industry benchmarks (SaaS):
+- Landing page → Signup: 2-5% (good), >8% (excellent)
+- Signup → Activation: 20-40% (good), >60% (excellent)
+- Activation → D7 Active: 25-40% (good)
+- Free → Paid: 2-5% (freemium), 10-25% (free trial)
+- Monthly churn: <5% (good), <2% (excellent)
+
+## Experiment Design (don't guess, test)
+Structure:
+1. Hypothesis: "If we [change], then [metric] will improve by [amount] because [reason]"
+2. Sample size: minimum 100 conversions per variant for statistical significance
+3. Duration: minimum 7 days (capture day-of-week effects)
+4. One variable at a time (unless using multivariate testing)
+5. Document EVERYTHING: what, why, result, learning
+
+## Attribution
+- First touch: which channel introduced the user?
+- Last touch: which channel closed the conversion?
+- Multi-touch: credit distributed across journey
+- For startups: simple self-reported "How did you hear about us?" field
+  (dropdown: Reddit, X/Twitter, Google search, friend referral, AI recommendation, other)
+  This is often more accurate than any attribution tool.
+
+## Dashboards (what to build)
+Daily: signups, activation, revenue
+Weekly: CAC, LTV, retention cohorts, experiment results
+Monthly: channel ROI comparison, growth rate, burn rate""",
         },
     ],
 
     "critic": [
         {
-            "name": "strategy_review",
-            "source": "CrabRes 自研",
-            "description": "策略审核清单",
-            "framework": """审核维度:
-✅ 可行性: 预算够吗？时间够吗？技能够吗？
-✅ 一致性: 渠道策略互相矛盾吗？品牌调性一致吗？
-✅ 风险: 最坏情况损失多少？合规风险？
-✅ 现实性: 数字合理吗？时间线现实吗？
-✅ 遗漏: 有明显遗漏的渠道/策略吗？
+            "name": "strategy_review_checklist",
+            "source": "CrabRes + Y Combinator startup advice + common failure patterns",
+            "description": "策略审核完整清单（可行性+一致性+风险+现实性）",
+            "framework": """=== STRATEGY REVIEW CHECKLIST ===
 
-红线:
-- 预算超支 → ❌
-- 预期数字远超行业基准且无理由 → ❌
-- 策略需要用户没有的技能 → ⚠️ + 替代方案""",
+## Feasibility Check
+- Budget: does the user have enough money? (if not, recommend $0 alternatives)
+- Time: can they execute with ≤30 min/day? (most indie hackers have day jobs)
+- Skills: do they have the required skills? (if not, suggest tools/services)
+- Tech barriers: does it require coding/design/video? (suggest no-code alternatives)
+
+## Consistency Check
+- Channel strategies: do they contradict each other? (e.g., premium brand + discount ads)
+- Brand voice: consistent across all channels?
+- Budget allocation: aligned with priorities?
+- Timeline: realistic sequencing? (can't launch PH before product is ready)
+
+## Risk Assessment
+- What's the worst case? (how much money/time lost if this fails completely)
+- Compliance risks? (GDPR, FTC influencer disclosure, platform ToS)
+- Dependency risks? (relies on one channel that could change algorithm/rules)
+- Reputation risks? (aggressive Reddit strategy could backfire)
+
+## Reality Check
+- Are the projected numbers reasonable? Compare to industry benchmarks.
+  "1000 users from Reddit in 1 month" — unlikely without paid promotion.
+  "50 signups from 10 Reddit posts" — possible if targeting right subreddits.
+- Is the timeline realistic? Organic SEO = 3-6 months. Reddit = 2-4 weeks. Ads = 72 hours.
+- Are there assumptions that haven't been validated?
+
+## Missing Check
+- Any obvious channels not considered? (e.g., user ignored SEO for a content product)
+- Competitors doing something the plan doesn't address?
+- Customer retention strategy missing? (all acquisition, no retention = leaky bucket)
+
+## Output Format
+✅ Passes review (with specific praise for what's strong)
+⚠️ Needs attention (with specific fix suggestion)
+❌ Must change (with alternative approach)""",
         },
     ],
 }

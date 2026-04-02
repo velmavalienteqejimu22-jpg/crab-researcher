@@ -24,6 +24,7 @@ from app.api.v2 import simulate as simulate_v2
 from app.api.v2 import execute as execute_v2
 from app.api.v2 import demo as demo_v2
 from app.api.v2 import experiments as experiments_v2
+from app.api.v2 import playbooks as playbooks_v2
 from app.channels.feishu_bot import router as feishu_router
 from app.channels.openclaw_skill import router as openclaw_router
 from app.services.scheduler import MonitoringScheduler
@@ -118,6 +119,7 @@ app.include_router(simulate_v2.router, prefix=settings.API_PREFIX)
 app.include_router(execute_v2.router, prefix=settings.API_PREFIX)
 app.include_router(demo_v2.router, prefix=settings.API_PREFIX)
 app.include_router(experiments_v2.router, prefix=settings.API_PREFIX)
+app.include_router(playbooks_v2.router, prefix=settings.API_PREFIX)
 
 # 渠道路由
 app.include_router(feishu_router, prefix=settings.API_PREFIX)
