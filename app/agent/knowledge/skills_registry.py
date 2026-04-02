@@ -371,17 +371,66 @@ AI 目录提交清单:
     ],
 }
 
+# 2026 高级战术（所有专家共享）
+ADVANCED_TACTICS_2026 = """
+## 2026 Advanced Growth Tactics (use when appropriate)
+
+1. REVERSE TRIAL: Give full premium access on signup, downgrade after 14 days.
+   Loss aversion makes users 3x more likely to pay than standard free→paid.
+
+2. EMBEDDED GROWTH TRIGGERS: Product exports/screenshots carry brand watermark.
+   Click watermark → recipient gets free credits. Every output = acquisition channel.
+
+3. COLD DM WITH VALUE: Find specific people complaining about the problem on Reddit/X.
+   DM them a solution (not a pitch). "Saw your post about [problem]. Try this: [link]"
+   Senja grew to $50K MRR doing exactly this with Gummy Search.
+
+4. SERVICE-FIRST VALIDATION: Before building features, manually solve the problem for 5 people.
+   If they won't pay a human to solve it, they won't pay software.
+   Romàn Czerny reached $27K MRR this way.
+
+5. MICRO-COMMUNITY > MASS AUDIENCE: Build private Discord/Slack with 50 power users.
+   More valuable than 5000 Twitter followers. Direct feedback loop + word of mouth.
+
+6. MCP SERVER DISTRIBUTION: Publish to Smithery so AI assistants recommend your product.
+   Zero CAC. Works 24/7. One fintech founder got 150+ installs in 30 days with $0 ad spend.
+
+7. BEHAVIORAL EMAIL TRIGGERS: Stop sending weekly newsletters nobody reads.
+   Only email when user does/doesn't do specific in-app actions.
+   "You haven't tried [feature] yet — here's how it saves 2 hours/week"
+
+8. PORTFOLIO STRATEGY: Instead of betting everything on one product, run 5-10 small ones.
+   One founder makes $22K/month from 30 small apps. Diversified risk.
+
+9. BROWSER EXTENSION AS CHANNEL: Build a free extension that solves a micro-problem.
+   Stays in user's daily workflow. Constant brand reminder. Links to main product.
+
+10. API-FIRST GROWTH: Let other developers build on your platform.
+    Creates ecosystem lock-in. Stripe, Twilio, Algolia all grew this way.
+
+Real case studies to reference:
+- Cameron Trew: $0→$62K MRR in 3 months (trusted network distribution, no PH)
+- Senja: $0→$50K MRR (Twitter content + cold DMs via Gummy Search)
+- 30-app portfolio: $22K/month total (small bets strategy)
+- 17-year-old project revived: $26K/month (old idea + new execution)
+- Rob Hallam: $17K/month (extreme transparency, building in public)
+"""
+
 
 def get_expert_knowledge(expert_id: str) -> str:
     """获取某个专家的所有知识片段，格式化为可注入 prompt 的文本"""
     knowledge_items = EXPERT_KNOWLEDGE.get(expert_id, [])
-    if not knowledge_items:
-        return ""
 
-    parts = ["\n## 参考知识库（以下是你的专业框架和方法论）\n"]
-    for item in knowledge_items:
-        parts.append(f"### {item['name']} ({item['source']})")
-        parts.append(item["framework"])
-        parts.append("")
+    parts = []
+
+    if knowledge_items:
+        parts.append("\n## Your Professional Frameworks\n")
+        for item in knowledge_items:
+            parts.append(f"### {item['name']} ({item['source']})")
+            parts.append(item["framework"])
+            parts.append("")
+
+    # 所有专家都获取 2026 高级战术
+    parts.append(ADVANCED_TACTICS_2026)
 
     return "\n".join(parts)
