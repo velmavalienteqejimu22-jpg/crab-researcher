@@ -100,6 +100,10 @@ class AgentLoop:
         self.state.last_active_at = time.time()
         self.state.is_waiting_for_user = False
 
+        # 如果是新启动的会话（或进程重启），尝试从磁盘加载历史
+        if not self._message_history:
+            await self._load_state()
+
         # 写前日志（学 Claude Code）
         await self._write_ahead_log(user_message)
 
@@ -458,7 +462,7 @@ The user came here because they're tired of generic advice. Show them what real 
         is_plan = any(kw in content.lower() for kw in plan_keywords)
 
         if is_plan and len(content) > 200:
-            await self.memory.save("growth_plan", {
+            await self.memory.save(f"growth_plan_{self.state.session_id}", {
                 "content": content,
                 "turn": self.state.turn_count,
                 "updated_at": time.time(),
@@ -483,9 +487,14 @@ The user came here because they're tired of generic advice. Show them what real 
                             break
 
             if tasks:
-                await self.memory.save("daily_tasks", tasks, category="strategy")
+                self.state.pending_user_tasks = tasks
+                await self.memory.save(f"daily_tasks_{self.state.session_id}", tasks, category="strategy")
 
             logger.info(f"Saved growth plan to memory ({len(content)} chars, {len(tasks)} tasks)")
+
+        # 保存专家输出
+        for expert_id, output in self.state.expert_outputs.items():
+            await self.memory.save(f"expert_output_{self.state.session_id}_{expert_id}", output, category="research")
 
         # 记录到日志
         await self.memory.append_journal({
@@ -534,7 +543,7 @@ The user came here because they're tired of generic advice. Show them what real 
 
     async def _persist_state(self):
         """持久化 Loop 状态"""
-        await self.memory.save("loop_state", {
+        await self.memory.save(f"loop_state_{self.state.session_id}", {
             "session_id": self.state.session_id,
             "phase": self.state.phase.value,
             "turn_count": self.state.turn_count,
@@ -542,7 +551,28 @@ The user came here because they're tired of generic advice. Show them what real 
             "pending_tasks": self.state.pending_user_tasks,
             "expert_outputs_keys": list(self.state.expert_outputs.keys()),
             "is_waiting": self.state.is_waiting_for_user,
+            "message_history": self._message_history,
         })
+
+    async def _load_state(self):
+        """从磁盘加载 Loop 状态"""
+        data = await self.memory.load(f"loop_state_{self.state.session_id}")
+        if not data:
+            return
+
+        logger.info(f"Loading session state for {self.state.session_id}")
+        self.state.phase = LoopPhase(data.get("phase", LoopPhase.INTAKE))
+        self.state.turn_count = data.get("turn_count", 0)
+        self.state.total_tokens_used = data.get("tokens_used", 0)
+        self.state.pending_user_tasks = data.get("pending_tasks", [])
+        self.state.is_waiting_for_user = data.get("is_waiting", False)
+        self._message_history = data.get("message_history", [])
+        
+        # 加载已有的专家输出到内存
+        for expert_id in data.get("expert_outputs_keys", []):
+            output = await self.memory.load(f"expert_output_{self.state.session_id}_{expert_id}", category="research")
+            if output:
+                self.state.expert_outputs[expert_id] = output
 
     def _get_available_actions(self) -> list[dict]:
         """返回当前可用的 action schema"""
@@ -598,6 +628,17 @@ The user came here because they're tired of generic advice. Show them what real 
                         "competitor_name": {"type": "string", "description": "Competitor name"},
                     },
                     "required": ["competitor_url"],
+                }
+            },
+            {
+                "name": "deep_scrape",
+                "description": "Deep scrape a URL using Firecrawl (handles JavaScript rendering). Use for Instagram, SPA apps, or when regular scrape fails.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string", "description": "URL to deep scrape"},
+                    },
+                    "required": ["url"],
                 }
             },
             # 行动工具

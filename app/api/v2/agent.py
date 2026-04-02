@@ -7,6 +7,8 @@ CrabRes Agent API — v2
 
 import uuid
 import logging
+import json
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -170,18 +172,47 @@ async def get_session_status(
 async def list_sessions(
     current_user: dict = Depends(get_current_user),
 ):
-    """列出用户的所有会话"""
-    user_sessions = []
+    """列出用户的所有会话 (包含内存和磁盘)"""
+    user_id = current_user.get('user_id', 'default')
+    # loop_state 默认保存在 product/ 目录下
+    memory_path = Path(f".crabres/memory/{user_id}/product")
+    
+    # 1. 首先包含内存中的活跃会话
+    user_sessions = {}
     for sid, loop in _sessions.items():
-        user_sessions.append({
+        user_sessions[sid] = {
             "session_id": sid,
             "phase": loop.state.phase.value,
             "turn_count": loop.state.turn_count,
             "is_waiting": loop.state.is_waiting_for_user,
             "created_at": loop.state.created_at,
             "last_active_at": loop.state.last_active_at,
-        })
-    return {"sessions": user_sessions}
+            "is_active": True,
+        }
+    
+    # 2. 扫描磁盘上的持久化会话
+    if memory_path.exists():
+        for state_file in memory_path.glob("loop_state_*.json"):
+            try:
+                sid = state_file.stem.replace("loop_state_", "")
+                if sid not in user_sessions:
+                    with open(state_file, "r") as f:
+                        data = json.load(f)
+                        user_sessions[sid] = {
+                            "session_id": sid,
+                            "phase": data.get("phase"),
+                            "turn_count": data.get("turn_count"),
+                            "is_waiting": data.get("is_waiting"),
+                            "created_at": data.get("created_at", state_file.stat().st_ctime),
+                            "last_active_at": data.get("last_active_at", state_file.stat().st_mtime),
+                            "is_active": False,
+                            "from_disk": True
+                        }
+            except Exception as e:
+                logger.error(f"Error loading session metadata from disk: {e}")
+                continue
+
+    return {"sessions": list(user_sessions.values())}
 
 
 @router.get("/session/{session_id}/cost")

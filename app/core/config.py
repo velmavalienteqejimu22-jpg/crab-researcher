@@ -2,9 +2,9 @@
 CrabRes 配置管理
 """
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
-from typing import Optional
+from typing import Optional, List
 
 
 class Settings(BaseSettings):
@@ -63,16 +63,16 @@ class Settings(BaseSettings):
     TOKEN_USAGE_ALERT_THRESHOLD: float = 0.8
 
     # ========== 爬虫安全白名单 ==========
-    ALLOWED_SCRAPE_DOMAINS: list[str] = [
+    ALLOWED_SCRAPE_DOMAINS: List[str] = [
         "taobao.com", "tmall.com", "jd.com", "pdd.com", "1688.com",
         "xiaohongshu.com", "douyin.com", "weibo.com",
     ]
 
-    ALLOWED_ACTIONS: list[str] = [
+    ALLOWED_ACTIONS: List[str] = [
         "fetch_data", "generate_report", "send_notification", "search_rag",
     ]
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
 @lru_cache()
