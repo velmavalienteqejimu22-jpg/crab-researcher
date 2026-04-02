@@ -320,7 +320,6 @@ export function Surface({ creature, onChat, onPlan, onSettings }: SurfaceProps) 
               action={d.url ? (creature.market === 'global' ? 'View' : '查看') : (creature.market === 'global' ? 'Analyze' : '分析')}
               onAction={() => d.url ? window.open(d.url, '_blank') : onChat()}
             />
-            />
           )) : (
             <div className="text-center py-6 text-sm text-muted">
               {creature.market === 'global' 
