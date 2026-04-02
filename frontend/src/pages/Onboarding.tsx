@@ -44,8 +44,26 @@ const BUDGETS = [
   { value: '1000', label: '$1,000+/mo' },
 ]
 
+const MARKETS = [
+  { 
+    value: 'global', 
+    label: 'Global Market (Voyager)', 
+    icon: '🌐',
+    desc: 'Focus on "Build in Public", creative speed, and global early adopters.',
+    aha: 'Your 90-day "Copy-Paste" Growth Roadmap will be ready in 2 minutes.'
+  },
+  { 
+    value: 'domestic', 
+    label: 'Domestic & Overseas (Money-Maker)', 
+    icon: '💰',
+    desc: '专注变现、出海 (Going Overseas) 和挖掘海外盈利机会。',
+    aha: '帮你挖掘海外市场的真实需求，赚到第一个 $1,000。'
+  },
+]
+
 export function Onboarding({ userId, onComplete }: OnboardingProps) {
   const [step, setStep] = useState(1)
+  const [market, setMarket] = useState('global')
   const [productName, setProductName] = useState('')
   const [productUrl, setProductUrl] = useState('')
   const [productDesc, setProductDesc] = useState('')
@@ -62,6 +80,10 @@ export function Onboarding({ userId, onComplete }: OnboardingProps) {
 
   const handleStep2Next = () => {
     setStep(3)
+  }
+
+  const handleStep3Next = () => {
+    setStep(4)
     // 生成生物体
     const c = generateCreature(userId, productType || 'default')
     c.name = productName
@@ -73,6 +95,7 @@ export function Onboarding({ userId, onComplete }: OnboardingProps) {
     setLoading(true)
     const productData = {
       name: productName,
+      market,
       url: productUrl,
       description: productDesc,
       type: productType,
@@ -85,11 +108,11 @@ export function Onboarding({ userId, onComplete }: OnboardingProps) {
       await api('/agent/chat', {
         method: 'POST',
         body: JSON.stringify({
-          message: `My product is called "${productName}". ${productDesc ? `It's ${productDesc}.` : ''} ${productUrl ? `URL: ${productUrl}.` : ''} Product type: ${productType || 'not specified'}. Goal: ${userGoal || 'not set'} users in 3 months. Monthly budget: $${budget || '0'}.`,
+          message: `My product is called "${productName}". Market focus: ${market}. ${productDesc ? `It's ${productDesc}.` : ''} ${productUrl ? `URL: ${productUrl}.` : ''} Product type: ${productType || 'not specified'}. Goal: ${userGoal || 'not set'} users in 3 months. Monthly budget: $${budget || '0'}.`,
         }),
       })
     } catch (e) {
-      // 即使 API 失败也继续（不阻塞 onboarding）
+      // 即使 API 失败也继续
     }
 
     const c = creature || generateCreature(userId, productType || 'default')
@@ -103,7 +126,7 @@ export function Onboarding({ userId, onComplete }: OnboardingProps) {
 
         {/* 进度指示 */}
         <div className="flex items-center gap-2 mb-8 justify-center">
-          {[1, 2, 3].map(s => (
+          {[1, 2, 3, 4].map(s => (
             <div key={s} className="flex items-center gap-2">
               <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all ${
                 s === step ? 'bg-brand text-white' :
@@ -112,40 +135,89 @@ export function Onboarding({ userId, onComplete }: OnboardingProps) {
               }`}>
                 {s < step ? '✓' : s}
               </div>
-              {s < 3 && <div className={`w-8 h-px ${s < step ? 'bg-brand' : 'bg-border'}`} />}
+              {s < 4 && <div className={`w-8 h-px ${s < step ? 'bg-brand' : 'bg-border'}`} />}
             </div>
           ))}
         </div>
 
-        {/* Step 1: 产品信息 */}
+        {/* Step 1: 市场焦点 & 名称 */}
         {step === 1 && (
           <div className="text-center">
             <div className="text-4xl mb-3">🦀</div>
-            <h2 className="text-xl font-bold text-primary mb-1">Tell me about your product</h2>
-            <p className="text-sm text-muted mb-6">I'll research your market and build a growth plan.</p>
+            <h2 className="text-xl font-bold text-primary mb-1">
+              {market === 'global' ? 'Choose your growth focus' : '选择你的增长重心'}
+            </h2>
+            <p className="text-sm text-muted mb-6">
+              {market === 'global' ? 'I will tailor my expertise to your persona.' : '我会根据你的画像定制增长策略。'}
+            </p>
+
+            <div className="space-y-3 text-left mb-6">
+              {MARKETS.map(m => (
+                <button
+                  key={m.value}
+                  onClick={() => setMarket(m.value)}
+                  className={`w-full p-4 rounded-xl text-left border transition-all ${
+                    market === m.value
+                      ? 'border-brand bg-brand/5'
+                      : 'border-border bg-card/50 hover:border-brand/30'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 mb-1">
+                    <span className="text-2xl">{m.icon}</span>
+                    <span className={`font-bold ${market === m.value ? 'text-brand' : 'text-primary'}`}>{m.label}</span>
+                  </div>
+                  <p className="text-xs text-muted leading-relaxed pl-9">{m.desc}</p>
+                </button>
+              ))}
+            </div>
+
+            <div className="text-left mb-6">
+              <label className="text-xs font-medium text-secondary mb-1 block">
+                {market === 'global' ? 'What is your product name? *' : '你的产品名称是？ *'}
+              </label>
+              <input
+                className="w-full"
+                placeholder="e.g., JobPilot"
+                value={productName}
+                onChange={e => setProductName(e.target.value)}
+                autoFocus
+              />
+            </div>
+
+            <button onClick={handleStep1Next} disabled={!productName.trim()}
+              className="btn-primary w-full mt-2 !py-3 disabled:opacity-40">
+              {market === 'global' ? 'Next →' : '下一步 →'}
+            </button>
+          </div>
+        )}
+
+        {/* Step 2: 产品详情 */}
+        {step === 2 && (
+          <div className="text-center">
+            <div className="text-4xl mb-3">🛠</div>
+            <h2 className="text-xl font-bold text-primary mb-1">
+              {market === 'global' ? 'A few more details' : '再补充一些细节'}
+            </h2>
+            <p className="text-sm text-muted mb-6">
+              {market === 'global' ? 'The more I know, the better I research.' : '我知道的越多，研究就越精准。'}
+            </p>
 
             <div className="space-y-3 text-left">
               <div>
-                <label className="text-xs font-medium text-secondary mb-1 block">Product name *</label>
+                <label className="text-xs font-medium text-secondary mb-1 block">
+                  {market === 'global' ? 'What does it do?' : '它是做什么的？'}
+                </label>
                 <input
                   className="w-full"
-                  placeholder="e.g., JobPilot"
-                  value={productName}
-                  onChange={e => setProductName(e.target.value)}
-                  autoFocus
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-secondary mb-1 block">What does it do?</label>
-                <input
-                  className="w-full"
-                  placeholder="e.g., AI resume optimizer for job seekers"
+                  placeholder={market === 'global' ? "e.g., AI resume optimizer" : "例如：AI 简历优化工具"}
                   value={productDesc}
                   onChange={e => setProductDesc(e.target.value)}
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-secondary mb-1 block">Product URL (optional)</label>
+                <label className="text-xs font-medium text-secondary mb-1 block">
+                  {market === 'global' ? 'Product URL (optional)' : '产品 URL (可选)'}
+                </label>
                 <input
                   className="w-full"
                   placeholder="https://..."
@@ -154,7 +226,9 @@ export function Onboarding({ userId, onComplete }: OnboardingProps) {
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-secondary mb-1 block">Product type</label>
+                <label className="text-xs font-medium text-secondary mb-1 block">
+                  {market === 'global' ? 'Product type' : '产品类型'}
+                </label>
                 <div className="grid grid-cols-2 gap-2">
                   {PRODUCT_TYPES.map(t => (
                     <button
@@ -173,23 +247,33 @@ export function Onboarding({ userId, onComplete }: OnboardingProps) {
               </div>
             </div>
 
-            <button onClick={handleStep1Next} disabled={!productName.trim()}
-              className="btn-primary w-full mt-6 !py-3 disabled:opacity-40">
-              Next →
-            </button>
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => setStep(1)} className="btn-ghost flex-1 !py-3">
+                {market === 'global' ? '← Back' : '← 返回'}
+              </button>
+              <button onClick={handleStep2Next} className="btn-primary flex-1 !py-3">
+                {market === 'global' ? 'Next →' : '下一步 →'}
+              </button>
+            </div>
           </div>
         )}
 
-        {/* Step 2: 目标 */}
-        {step === 2 && (
+        {/* Step 3: 目标 */}
+        {step === 3 && (
           <div className="text-center">
             <div className="text-4xl mb-3">🎯</div>
-            <h2 className="text-xl font-bold text-primary mb-1">What's your growth goal?</h2>
-            <p className="text-sm text-muted mb-6">This helps me calibrate the strategy.</p>
+            <h2 className="text-xl font-bold text-primary mb-1">
+              {market === 'global' ? "What's your growth goal?" : '你的增长目标是？'}
+            </h2>
+            <p className="text-sm text-muted mb-6">
+              {market === 'global' ? 'This helps me calibrate the strategy.' : '这能帮我校准增长策略。'}
+            </p>
 
             <div className="space-y-4 text-left">
               <div>
-                <label className="text-xs font-medium text-secondary mb-2 block">Target users in 3 months</label>
+                <label className="text-xs font-medium text-secondary mb-2 block">
+                  {market === 'global' ? 'Target users in 3 months' : '3 个月内的目标用户数'}
+                </label>
                 <div className="flex flex-wrap gap-2">
                   {USER_GOALS.map(g => (
                     <button
@@ -208,7 +292,9 @@ export function Onboarding({ userId, onComplete }: OnboardingProps) {
               </div>
 
               <div>
-                <label className="text-xs font-medium text-secondary mb-2 block">Monthly marketing budget</label>
+                <label className="text-xs font-medium text-secondary mb-2 block">
+                  {market === 'global' ? 'Monthly marketing budget' : '月度营销预算'}
+                </label>
                 <div className="flex flex-wrap gap-2">
                   {BUDGETS.map(b => (
                     <button
@@ -228,23 +314,27 @@ export function Onboarding({ userId, onComplete }: OnboardingProps) {
             </div>
 
             <div className="flex gap-3 mt-6">
-              <button onClick={() => setStep(1)} className="btn-ghost flex-1 !py-3">← Back</button>
-              <button onClick={handleStep2Next} className="btn-primary flex-1 !py-3">
-                Next →
+              <button onClick={() => setStep(2)} className="btn-ghost flex-1 !py-3">
+                {market === 'global' ? '← Back' : '← 返回'}
+              </button>
+              <button onClick={handleStep3Next} className="btn-primary flex-1 !py-3">
+                {market === 'global' ? 'Next →' : '下一步 →'}
               </button>
             </div>
-
-            <button onClick={handleStep2Next} className="text-xs text-muted mt-3 hover:text-secondary">
-              Skip for now →
-            </button>
           </div>
         )}
 
-        {/* Step 3: 生物体揭晓 */}
-        {step === 3 && creature && (
+        {/* Step 4: 生物体揭晓 */}
+        {step === 4 && creature && (
           <div className="text-center">
-            <h2 className="text-xl font-bold text-primary mb-2">Meet your growth companion</h2>
-            <p className="text-sm text-muted mb-6">Assembling your 13-expert growth team...</p>
+            <h2 className="text-xl font-bold text-primary mb-2">
+              {market === 'global' ? 'Meet your growth companion' : '遇见你的增长伙伴'}
+            </h2>
+            <p className="text-sm text-muted mb-6">
+              {market === 'global' 
+                ? 'Assembling your 13-expert growth team...' 
+                : '正在集结你的 13 位专家增长团...'}
+            </p>
 
             <div className="mb-4">
               <CreatureRenderer creature={creature} size={160} />
@@ -252,10 +342,14 @@ export function Onboarding({ userId, onComplete }: OnboardingProps) {
 
             <div className="mb-6">
               <p className="text-lg font-bold" style={{ color: SPECIES_CONFIG[creature.species].baseColor }}>
-                {SPECIES_CONFIG[creature.species].displayName}
+                {market === 'global' 
+                  ? (creature.species === 'crab' ? 'The Tech Voyager 🎧' : SPECIES_CONFIG[creature.species].displayName)
+                  : (creature.species === 'crab' ? '出海金牌研究员 💰' : SPECIES_CONFIG[creature.species].displayName)}
               </p>
-              <p className="text-sm text-muted mt-1">
-                "{SPECIES_CONFIG[creature.species].description}"
+              <p className="text-sm text-muted mt-1 px-4">
+                {market === 'global' 
+                  ? 'Currently scanning Reddit to find your early adopters.'
+                  : '正在为你扫描全球市场的盈利机会。'}
               </p>
             </div>
 
@@ -271,17 +365,29 @@ export function Onboarding({ userId, onComplete }: OnboardingProps) {
                   style={{ animationDelay: `${i * 100}ms`, opacity: 0, animationFillMode: 'forwards' }}>
                   <span className="text-brand">✓</span>
                   <span className="text-secondary">{expert}</span>
-                  <span className="text-muted">ready</span>
+                  <span className="text-muted">
+                    {market === 'global' ? 'ready' : '就绪'}
+                  </span>
                 </div>
               ))}
             </div>
 
             <button onClick={handleFinish} disabled={loading}
               className="btn-primary w-full !py-3 disabled:opacity-60">
-              {loading ? 'Starting research...' : "Let's grow! →"}
+              {loading 
+                ? (market === 'global' ? 'Starting research...' : '开始深度研究...') 
+                : (market === 'global' ? "Let's grow! →" : '立即增长！ →')}
             </button>
+            
+            <p className="text-[10px] text-muted mt-4 uppercase tracking-widest opacity-60">
+              {MARKETS.find(m => m.value === market)?.aha}
+            </p>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
       </div>
     </div>
   )

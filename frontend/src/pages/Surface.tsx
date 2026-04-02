@@ -85,14 +85,16 @@ export function Surface({ creature, onChat, onPlan, onSettings }: SurfaceProps) 
 
       {/* 3 个核心数字 */}
       <div className="flex items-center gap-6 mb-8">
-        <MetricCard value={`+${stats?.growth_rate ?? creature.growthRate}%`} label="growth" />
-        <MetricCard value={`${stats?.total_users ?? creature.totalUsers}`} label="users" />
-        <MetricCard value={`${stats?.streak_days ?? creature.streakDays}d`} label="streak" accent />
+        <MetricCard value={`+${stats?.growth_rate ?? creature.growthRate}%`} label={creature.market === 'global' ? "growth" : "周增长"} />
+        <MetricCard value={`${stats?.total_users ?? creature.totalUsers}`} label={creature.market === 'global' ? "users" : "用户数"} />
+        <MetricCard value={`${stats?.streak_days ?? creature.streakDays}d`} label={creature.market === 'global' ? "streak" : "连续增长"} accent />
       </div>
 
       {/* 今日任务 */}
       <div className="w-full mb-6">
-        <h3 className="text-xs font-medium text-muted uppercase tracking-wider mb-3 font-heading">Today</h3>
+        <h3 className="text-xs font-medium text-muted uppercase tracking-wider mb-3 font-heading">
+          {creature.market === 'global' ? 'Today' : '今日待办'}
+        </h3>
         <div className="space-y-2">
           {tasks.length > 0 ? tasks.map((t: any, i: number) => (
             <TaskCard
@@ -100,29 +102,34 @@ export function Surface({ creature, onChat, onPlan, onSettings }: SurfaceProps) 
               icon={t.type === 'chat' ? <ChatIcon /> : <PenIcon />}
               title={t.title}
               subtitle={t.subtitle || ''}
-              action={t.type === 'chat' ? 'Chat' : 'Do it'}
+              action={t.type === 'chat' ? (creature.market === 'global' ? 'Chat' : '开聊') : (creature.market === 'global' ? 'Do it' : '去执行')}
             />
           )) : (
-            <TaskCard icon={<ChatIcon />} title="Tell CrabRes about your product"
-              subtitle="Start a conversation to begin research" action="Chat" />
+            <TaskCard icon={<ChatIcon />} 
+              title={creature.market === 'global' ? "Tell CrabRes about your product" : "告诉螃蟹你的产品细节"}
+              subtitle={creature.market === 'global' ? "Start a conversation to begin research" : "开始对话以启动深度调研"} 
+              action={creature.market === 'global' ? "Chat" : "开聊"} />
           )}
         </div>
       </div>
 
       {/* 发现 */}
       <div className="w-full mb-8">
-        <h3 className="text-xs font-medium text-muted uppercase tracking-wider mb-3">Discoveries</h3>
+        <h3 className="text-xs font-medium text-muted uppercase tracking-wider mb-3">
+          {creature.market === 'global' ? 'Discoveries' : '最新发现'}
+        </h3>
         <div className="space-y-2">
           {discoveries.length > 0 ? discoveries.map((d, i) => (
             <DiscoveryCard
               key={i}
               title={d.title || d.change || d.competitor || 'New discovery'}
-              action={d.url ? 'View' : 'Analyze'}
+              action={d.url ? (creature.market === 'global' ? 'View' : '查看') : (creature.market === 'global' ? 'Analyze' : '分析')}
             />
           )) : (
             <div className="text-center py-6 text-sm text-muted">
-              Your growth daemon is scanning...<br />
-              <span className="text-xs">Discoveries will appear here.</span>
+              {creature.market === 'global' 
+                ? <>Your growth daemon is scanning...<br /><span className="text-xs">Discoveries will appear here.</span></>
+                : <>增长引擎正在全球扫描中...<br /><span className="text-xs">最新发现将显示在这里。</span></>}
             </div>
           )}
         </div>
@@ -132,11 +139,11 @@ export function Surface({ creature, onChat, onPlan, onSettings }: SurfaceProps) 
       <div className="w-full flex gap-3 mt-auto pt-4">
         <button onClick={onChat}
           className="flex-1 py-3.5 rounded-2xl bg-brand text-white text-sm font-heading font-semibold hover:bg-brand-hover transition-all shadow-md hover:shadow-lg">
-          Talk to CrabRes
+          {creature.market === 'global' ? 'Talk to CrabRes' : '与螃蟹对话'}
         </button>
         <button onClick={onPlan}
           className="flex-1 py-3.5 rounded-2xl card text-primary text-sm font-heading font-semibold hover:shadow-md transition-all">
-          Growth Plan
+          {creature.market === 'global' ? 'Growth Plan' : '增长策略'}
         </button>
       </div>
     </div>
@@ -193,24 +200,43 @@ function DiscoveryCard({ title, action }: { title: string; action: string }) {
 
 function getGreeting(creature: CreatureState): string {
   const hour = new Date().getHours()
+  const market = creature.market || 'global'
+  
   const greetings = {
-    morning: [
-      `Good morning! ${creature.streakDays} days strong.`,
-      `Rise and grind! Your competitors are already up.`,
-      `New day, new users. Let's go.`,
-    ],
-    afternoon: [
-      `Quick check-in. 2 things need your attention.`,
-      `Your growth engine is humming. Keep it up.`,
-    ],
-    evening: [
-      `Wrapping up the day. Here's what happened.`,
-      `Good evening! Tomorrow's content is ready for you.`,
-    ],
+    global: {
+      morning: [
+        `Good morning! ${creature.streakDays} days strong.`,
+        `Rise and grind! Your competitors are already up.`,
+        `New day, new users. Let's go.`,
+      ],
+      afternoon: [
+        `Quick check-in. 2 things need your attention.`,
+        `Your growth engine is humming. Keep it up.`,
+      ],
+      evening: [
+        `Wrapping up the day. Here's what happened.`,
+        `Good evening! Tomorrow's content is ready for you.`,
+      ],
+    },
+    domestic: {
+      morning: [
+        `早安！已经连续增长 ${creature.streakDays} 天了。`,
+        `别睡了，你的竞争对手已经在偷跑流量了。`,
+        `新的一天，去海外赚点美金回来。`,
+      ],
+      afternoon: [
+        `简单播报下：发现 2 个值得注意的增长机会。`,
+        `你的增长引擎运转良好，继续保持。`,
+      ],
+      evening: [
+        `复盘时间。今天全球市场发生了这些事。`,
+        `晚上好！明天的出海文案我已经帮你写好了。`,
+      ],
+    }
   }
 
   const period = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening'
-  const options = greetings[period]
+  const options = greetings[market][period]
   // 用日期做种子让每天不一样
   const dayHash = new Date().toDateString().split('').reduce((a, b) => a + b.charCodeAt(0), 0)
   return options[dayHash % options.length]

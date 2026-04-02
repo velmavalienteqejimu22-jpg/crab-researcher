@@ -106,6 +106,49 @@ EXPERT_KNOWLEDGE: dict[str, list[dict]] = {
 - AI/GEO 准备度: 结构化数据、可引用答案、FAQ Schema
 - E-E-A-T: 经验、专业性、权威性、可信度""",
         },
+        {
+            "name": "geo_optimization",
+            "source": "CrabRes 2026 + Averi.ai research",
+            "description": "GEO - 生成引擎优化（让 AI 搜索引擎引用你）",
+            "framework": """GEO (Generative Engine Optimization) — 2026 年最重要的新渠道
+
+什么是 GEO:
+让 ChatGPT、Perplexity、Google AI Overviews 在回答用户问题时引用你的内容。
+Peter Levels 发现 AI 推荐流量一个月内从 4% 跃升到 20%。
+
+优化方法:
+1. 结构化答案格式:
+   - 每篇文章开头直接给出结论（不要废话导入）
+   - 使用 FAQ 格式（Question → Direct Answer）
+   - 包含对比表（AI 特别喜欢引用表格数据）
+   - 使用确切数字和数据（"228.8亿元" > "数百亿"）
+
+2. Schema 标记:
+   - FAQPage schema 让 AI 能解析你的问答
+   - Product schema 让 AI 知道你的定价和功能
+   - HowTo schema 让 AI 引用你的步骤指南
+   - Comparison schema 让 AI 引用你的对比数据
+
+3. 内容结构:
+   - H2 用问题形式（"What is the best X for Y?"）
+   - 每个 H2 下面第一句话直接回答（无需铺垫）
+   - 列举式内容（numbered lists）比段落更容易被引用
+   - 包含 "as of 2026" 时间标记（AI 偏爱新鲜内容）
+
+4. 引用建设:
+   - 被高权威网站引用的内容更容易被 AI 推荐
+   - 在 Reddit/HN/StackOverflow 上回答问题并链接回你的文章
+   - 创建"唯一来源"数据（原创研究/调查/基准测试）
+
+5. 对比页面（GEO 金矿）:
+   - "X vs Y" 页面是 AI 最常引用的页面类型
+   - 包含功能对比表 + 定价对比 + 适用场景
+   - 诚实评价（不贬低竞品，AI 会检测偏见）
+
+衡量:
+- 在 ChatGPT/Perplexity 中搜索你的关键词，看是否引用你
+- 追踪来自 AI 搜索引擎的流量（GA4 的 referral 中看 chat.openai.com 等）""",
+        },
     ],
 
     "psychologist": [
@@ -183,8 +226,8 @@ CTA 公式: [动词] + [得到什么] + [限定词]
     "social_media": [
         {
             "name": "reddit_marketing",
-            "source": "superamped + skillatlas",
-            "description": "Reddit 原生营销策略",
+            "source": "superamped + ReplyAgent research",
+            "description": "Reddit 深度营销策略",
             "framework": """核心规则:
 - Reddit 用户反感任何营销味
 - 先提供价值 100 次，再提 1 次产品
@@ -192,10 +235,22 @@ CTA 公式: [动词] + [得到什么] + [限定词]
 - 回复比发帖更有效
 - 用子版块的语气和术语
 
+高价值机会发现（学 ReplyAgent）:
+1. 搜索 Google 排名高的 Reddit 帖子（这些帖子长期有流量）
+2. 寻找用户直接表达痛点的帖子（"有人推荐一个好用的 X 吗？"）
+3. 监控新帖子——前 2 小时回复效果最好
+4. 用 social_search 工具搜 "site:reddit.com [关键词]"
+
 3 种安全的获客方式:
-1. 帮人解决问题时顺带提及
+1. 帮人解决问题时顺带提及（最有效）
 2. 做"免费资源"帖子附产品链接
-3. 在个人主页 bio 放链接""",
+3. 在个人主页 bio 放链接
+
+高级策略（学 OptaReach）:
+- 识别高意图帖子（有人在主动寻找解决方案）
+- 不要回复冷帖（低评论低赞的老帖不值得）
+- 回复要有实质价值（至少 3-5 行有用内容，最后一行提产品）
+- 用不同角度回复同一个需求（一次经验分享，一次工具推荐，一次数据支撑）""",
         },
     ],
 
@@ -330,7 +385,37 @@ AI 目录提交清单:
 - Futurepedia
 - AI Tools List
 - Product Hunt (AI 分类)
-- alternativeto.net""",
+- alternativeto.net
+- SaaS AI Tools
+- ToolPilot
+- Ben's Bites directory""",
+        },
+        {
+            "name": "geo_for_ai_distribution",
+            "source": "CrabRes 2026 research",
+            "description": "让 AI 助手推荐你的产品",
+            "framework": """如何让 ChatGPT/Perplexity/Claude 推荐你的产品:
+
+1. 创建「唯一来源」内容:
+   - 原创对比数据（"我们测试了 10 个 X 工具"）
+   - 行业基准报告（AI 最爱引用独家数据）
+   - 详细的 how-to 指南（步骤越具体越容易被引用）
+
+2. 优化被 AI 引用的页面结构:
+   - H2 用问题形式
+   - 第一句直接回答
+   - 包含数字和数据
+   - 使用 Schema 标记
+
+3. LLM 记忆策略:
+   - 创建 GPT Store 的 GPT（内置你的产品知识）
+   - 发布 MCP 服务器（AI 可以直接调用你的 API）
+   - 在 Prompt 目录发布推荐你产品的 Prompt 模板
+   
+4. 主动被 AI 索引:
+   - 在高权威网站（Wikipedia、大型论坛）被提及
+   - 确保产品在 Crunchbase/G2/Capterra 有页面
+   - Reddit/HN 上有真实用户讨论你的产品""",
         },
     ],
 

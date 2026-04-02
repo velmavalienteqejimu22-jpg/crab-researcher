@@ -423,6 +423,7 @@ The user came here because they're tired of generic advice. Show them what real 
         competitors = await self.memory.load("competitors")
         strategy = await self.memory.load("strategy")
         results = await self.memory.load("results")
+        brand_config = await self.memory.load("brand_config", category="product")
 
         # 把用户消息加入消息历史
         if user_message:
@@ -430,14 +431,20 @@ The user came here because they're tired of generic advice. Show them what real 
 
         # 构建上下文摘要注入到消息中
         context_summary_parts = []
+        # 品牌配置优先（最重要的上下文）
+        if brand_config:
+            from app.api.v2.brand import get_brand_context
+            brand_text = get_brand_context(brand_config)
+            if brand_text:
+                context_summary_parts.append(brand_text)
         if product:
-            context_summary_parts.append(f"[已知产品信息]: {json.dumps(product, ensure_ascii=False, default=str)}")
+            context_summary_parts.append(f"[Product info]: {json.dumps(product, ensure_ascii=False, default=str)}")
         if competitors:
-            context_summary_parts.append(f"[已知竞品数据]: {json.dumps(competitors, ensure_ascii=False, default=str)[:500]}")
+            context_summary_parts.append(f"[Competitor data]: {json.dumps(competitors, ensure_ascii=False, default=str)[:500]}")
         if strategy:
-            context_summary_parts.append(f"[当前策略]: {json.dumps(strategy, ensure_ascii=False, default=str)[:500]}")
+            context_summary_parts.append(f"[Current strategy]: {json.dumps(strategy, ensure_ascii=False, default=str)[:500]}")
         if results:
-            context_summary_parts.append(f"[执行效果]: {json.dumps(results, ensure_ascii=False, default=str)[:300]}")
+            context_summary_parts.append(f"[Execution results]: {json.dumps(results, ensure_ascii=False, default=str)[:300]}")
 
         # 消息列表：如果有上下文摘要，作为第一条 system reminder 注入
         messages = []

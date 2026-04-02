@@ -189,8 +189,10 @@ export default function App() {
       // 如果已 onboarded，直接加载生物体
       if (onboarded) {
         const savedType = localStorage.getItem('crabres_product_type') || 'saas'
+        const savedMarket = localStorage.getItem('crabres_product_market') || 'global'
         const c = generateCreature(String(user.id), savedType)
         c.name = localStorage.getItem('crabres_product_name') || user.company_name || 'My Product'
+        c.market = savedMarket
         c.mood = 'happy'
         c.totalUsers = 0
         c.growthRate = 0
@@ -216,10 +218,11 @@ export default function App() {
       <Onboarding
         userId={userId}
         onComplete={(c, productData) => {
-          setCreature(c)
+          setCreature({ ...c, market: productData.market })
           localStorage.setItem('crabres_onboarded', '1')
           localStorage.setItem('crabres_product_type', productData.type || 'saas')
           localStorage.setItem('crabres_product_name', productData.name || '')
+          localStorage.setItem('crabres_product_market', productData.market || 'global')
           setOnboarded(true)
         }}
       />

@@ -44,6 +44,7 @@ export interface CreatureState {
   species: CreatureSpecies
   mood: CreatureMood
   size: CreatureSize
+  market: 'global' | 'domestic'    // 市场画像：Voyager vs Money-Maker
   name: string                    // 用户可以给它起名字
   color: string                   // 主色调（hex）
   accentColor: string             // 辅助色
@@ -169,7 +170,7 @@ export const ACCESSORIES: CreatureAccessory[] = [
  * 基于用户 ID 和产品类型确定性地生成生物体
  * 相同输入永远得到相同结果（学 Claude Code Buddy 的 Mulberry32 PRNG）
  */
-export function generateCreature(userId: string, productType: string): CreatureState {
+export function generateCreature(userId: string, productType: string, market: 'global' | 'domestic' = 'global'): CreatureState {
   // 简单的哈希函数
   const hash = simpleHash(userId + ':' + productType)
 
@@ -184,6 +185,7 @@ export function generateCreature(userId: string, productType: string): CreatureS
     species,
     mood: 'waving',
     size: 'tiny',
+    market,
     name: '',  // 用户稍后命名
     color: config.baseColor,
     accentColor: config.accentColor,
