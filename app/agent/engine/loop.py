@@ -450,16 +450,26 @@ The user came here because they're tired of generic advice. Show them what real 
         if context_summary_parts:
             messages.append({
                 "role": "user",
-                "content": "[系统注入的背景信息，不是用户说的]\n" + "\n".join(context_summary_parts),
+                "content": "[SYSTEM CONTEXT — not from user]\n" + "\n".join(context_summary_parts),
             })
             messages.append({
                 "role": "assistant",
-                "content": "收到，我已了解背景信息。",
+                "content": "Understood, I have the context loaded.",
             })
 
         # 加入消息历史（截取最近 20 条，避免超 token）
         recent_history = self._message_history[-20:]
         messages.extend(recent_history)
+
+        # 在最后追加语言提醒（紧贴用户最新消息之后，LLM 最容易遵循）
+        if user_message:
+            # 检测用户消息语言
+            has_cjk = any('\u4e00' <= c <= '\u9fff' for c in user_message)
+            lang = "Chinese (中文)" if has_cjk else "English"
+            messages.append({
+                "role": "user",
+                "content": f"[SYSTEM] Respond in {lang} only. Do NOT use any other language.",
+            })
 
         return {
             "user_message": user_message,
