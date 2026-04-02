@@ -189,10 +189,8 @@ export default function App() {
       // 如果已 onboarded，直接加载生物体
       if (onboarded) {
         const savedType = localStorage.getItem('crabres_product_type') || 'saas'
-        const savedMarket = localStorage.getItem('crabres_product_market') || 'global'
         const c = generateCreature(String(user.id), savedType)
         c.name = localStorage.getItem('crabres_product_name') || user.company_name || 'My Product'
-        c.market = savedMarket
         c.mood = 'happy'
         c.totalUsers = 0
         c.growthRate = 0

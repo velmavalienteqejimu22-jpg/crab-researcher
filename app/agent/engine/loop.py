@@ -161,7 +161,7 @@ class AgentLoop:
                         for j, (d, r) in enumerate(zip([decision] + decision.parallel_tools, results)):
                             if isinstance(r, Exception):
                                 r = {"error": str(r)}
-                            context = self._incorporate_result(context, d, r)
+                            context = await self._incorporate_result(context, d, r)
                             result_summary = json.dumps(r, ensure_ascii=False, default=str)[:1500]
                             self._message_history.append({
                                 "role": "assistant",
@@ -169,7 +169,7 @@ class AgentLoop:
                             })
                     else:
                         result = await self._execute_tool(decision)
-                        context = self._incorporate_result(context, decision, result)
+                        context = await self._incorporate_result(context, decision, result)
                         result_summary = json.dumps(result, ensure_ascii=False, default=str)[:2000]
                         self._message_history.append({
                             "role": "assistant",
@@ -396,13 +396,25 @@ The user came here because they're tired of generic advice. Show them what real 
 
         return await expert.analyze(context, action.content)
 
-    def _incorporate_result(self, context: dict, action: AgentAction, result: Any) -> dict:
+    async def _incorporate_result(self, context: dict, action: AgentAction, result: Any) -> dict:
         """将工具结果合并到上下文"""
         context.setdefault("tool_results", []).append({
             "tool": action.tool_name,
             "args": action.tool_args,
             "result": result,
         })
+
+        # 特殊处理：设置活跃战役
+        if action.tool_name == "set_active_campaign" and isinstance(result, dict) and result.get("status") == "pending_save":
+            url = result.get("url")
+            name = result.get("name")
+            if url:
+                execution = await self.memory.load("execution_stats", category="execution") or {}
+                execution["active_campaign_url"] = url
+                execution["active_campaign_name"] = name
+                await self.memory.save("execution_stats", execution, category="execution")
+                logger.info(f"Pinned active campaign to dashboard: {url}")
+
         return context
 
     def _incorporate_expert(self, context: dict, action: AgentAction, output: str) -> dict:
@@ -732,6 +744,18 @@ The user came here because they're tired of generic advice. Show them what real 
                 }
             },
             {
+                "name": "set_active_campaign",
+                "description": "Set the current active growth campaign URL (e.g., a Tweet link, Reddit post, or Launch page). This will be pinned to the dashboard for live tracking.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string", "description": "The URL of the campaign (e.g., https://x.com/user/status/123)"},
+                        "name": {"type": "string", "description": "Short name for the campaign", "default": "Global Launch Post"},
+                    },
+                    "required": ["url"],
+                }
+            },
+            {
                 "name": "ask_user",
                 "description": "Ask the user a question to get information you need.",
                 "parameters": {"type": "object", "properties": {"question": {"type": "string"}}, "required": ["question"]}
@@ -771,7 +795,7 @@ The user came here because they're tired of generic advice. Show them what real 
                     tool_name=args.get("tool_name"),
                     tool_args=args.get("tool_args", {}),
                 )
-            elif name in ("web_search", "social_search", "scrape_website", "competitor_analyze", "deep_scrape", "write_post", "write_email", "submit_directory"):
+            elif name in ("web_search", "social_search", "scrape_website", "competitor_analyze", "deep_scrape", "write_post", "write_email", "submit_directory", "set_active_campaign"):
                 # LLM 直接调用工具名
                 action = AgentAction(
                     type=ActionType.TOOL_CALL,

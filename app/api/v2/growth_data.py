@@ -9,8 +9,10 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
+from typing import Optional, List
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from app.core.security import get_current_user
 from app.agent.memory import GrowthMemory
 
@@ -102,8 +104,30 @@ async def get_growth_stats(current_user: dict = Depends(get_current_user)):
         "growth_rate": execution.get("growth_rate", 0) if execution else 0,
         "streak_days": execution.get("streak_days", 0) if execution else 0,
         "strategies_active": execution.get("strategies_active", 0) if execution else 0,
+        "active_campaign_url": execution.get("active_campaign_url", "") if execution else "",
         "product_name": product.get("name", "") if product else "",
     }
+
+
+class CampaignRequest(BaseModel):
+    url: str
+    name: Optional[str] = "Global Launch Post"
+
+
+@router.post("/campaign")
+async def update_active_campaign(
+    req: CampaignRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """更新当前活跃的增长战役链接"""
+    memory = _get_memory(current_user.get("user_id", 0))
+    execution = await memory.load("execution_stats", category="execution") or {}
+    
+    execution["active_campaign_url"] = req.url
+    execution["active_campaign_name"] = req.name
+    
+    await memory.save("execution_stats", execution, category="execution")
+    return {"status": "success", "url": req.url}
 
 
 @router.get("/calendar")

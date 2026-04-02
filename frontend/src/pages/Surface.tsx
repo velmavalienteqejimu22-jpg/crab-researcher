@@ -139,6 +139,35 @@ export function Surface({ creature, onChat, onPlan, onSettings }: SurfaceProps) 
         <MetricCard value={`${stats?.streak_days ?? creature.streakDays}d`} label={creature.market === 'global' ? "streak" : "连续增长"} accent />
       </div>
 
+      {/* 核心里程碑 / 活跃战役 */}
+      {(stats?.active_campaign_url || localStorage.getItem('crabres_active_tweet')) && (
+        <div className="w-full mb-8 animate-fade-in">
+          <h3 className="text-[10px] font-bold text-accent uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+            <span className="w-1.5 h-1.5 bg-accent rounded-full animate-ping"></span>
+            {creature.market === 'global' ? 'Active Growth Campaign' : '当前增长战役'}
+          </h3>
+          <div className="card border-accent/20 bg-accent/5 p-4 flex items-center justify-between group hover:border-accent/40 transition-all">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center text-accent">
+                <ShareIcon />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-primary">Day 1: Global Launch Post</p>
+                <p className="text-[10px] text-muted font-mono tracking-tighter uppercase">Status: Live & Tracking</p>
+              </div>
+            </div>
+            <a 
+              href={stats?.active_campaign_url || localStorage.getItem('crabres_active_tweet') || '#'} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-[11px] font-bold text-accent px-4 py-2 rounded-xl border border-accent/20 hover:bg-accent hover:text-white transition-all shadow-sm"
+            >
+              {creature.market === 'global' ? 'View Live' : '查看实时'} →
+            </a>
+          </div>
+        </div>
+      )}
+
       {/* 今日任务 */}
       <div className="w-full mb-6">
         <h3 className="text-xs font-medium text-muted uppercase tracking-wider mb-3 font-heading">

@@ -174,3 +174,33 @@ class SubmitToDirectoryTool(BaseTool):
             "directories": directories,
             "instruction": f"For each directory, write a tailored tagline (within char limit) and description. Make each one unique — don't just copy-paste the same text.",
         }
+
+
+class SetActiveCampaignTool(BaseTool):
+    """设置当前活跃的增长战役（如推文链接）"""
+
+    @property
+    def definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="set_active_campaign",
+            description="Set the current active growth campaign URL (e.g., a Tweet link, Reddit post, or Launch page). This will be pinned to the dashboard for live tracking.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "The URL of the campaign (e.g., https://x.com/user/status/123)"},
+                    "name": {"type": "string", "description": "Short name for the campaign", "default": "Global Launch Post"},
+                },
+                "required": ["url"],
+            },
+            concurrent_safe=True,
+        )
+
+    async def execute(self, url: str, name: str = "Global Launch Post") -> Any:
+        # 这个工具在 Loop 中被调用时，状态由 loop.memory 管理
+        # 我们返回指令让 Loop 逻辑去更新 memory
+        return {
+            "status": "pending_save",
+            "url": url,
+            "name": name,
+            "instruction": f"Save this campaign to growth memory: {name} at {url}",
+        }
