@@ -1,89 +1,149 @@
+/**
+ * RoundtableSimulation — 专家圆桌可视化
+ * 
+ * 设计：环形布局 + 脉冲连接线 + 活跃专家高亮
+ * 中心是 CrabRes 指挥官，13 位专家环绕
+ * 当某专家在思考时，它会放大 + 连接线亮起 + 脉冲动画
+ */
 
 import { EXPERTS } from '../../lib/experts'
 
 interface RoundtableSimulationProps {
-  activeExpertId?: string;
-  isSimulating?: boolean;
+  activeExpertId?: string
+  isSimulating?: boolean
 }
 
 export function RoundtableSimulation({ activeExpertId, isSimulating }: RoundtableSimulationProps) {
-  const expertKeys = Object.keys(EXPERTS);
-  const radius = 100;
-  const centerX = 150;
-  const centerY = 150;
+  const expertKeys = Object.keys(EXPERTS)
+  const size = 280
+  const cx = size / 2
+  const cy = size / 2
+  const outerR = 110
+  const innerR = 24
 
   return (
-    <div className="relative w-[300px] h-[300px] mx-auto mb-8 animate-fade-in">
-      {/* 背景环绕光晕 */}
-      <div className="absolute inset-0 rounded-full border border-brand/10 bg-brand/5 animate-pulse" />
-      <div className="absolute inset-4 rounded-full border border-brand/5" />
-      
-      {/* 中心：战术指挥官 (CrabRes) */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
-        <div className={`w-16 h-16 rounded-full bg-surface border-2 border-brand flex items-center justify-center text-2xl shadow-lg transition-transform ${isSimulating ? 'scale-110' : ''}`}>
-          🦀
-        </div>
+    <div className="flex flex-col items-center mb-6 animate-fade-in">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="overflow-visible">
+        <defs>
+          {/* 中心光晕 */}
+          <radialGradient id="center-glow">
+            <stop offset="0%" stopColor="var(--brand)" stopOpacity="0.15" />
+            <stop offset="100%" stopColor="var(--brand)" stopOpacity="0" />
+          </radialGradient>
+          {/* 外环渐变 */}
+          <radialGradient id="ring-gradient">
+            <stop offset="85%" stopColor="transparent" />
+            <stop offset="100%" stopColor="var(--brand)" stopOpacity="0.04" />
+          </radialGradient>
+        </defs>
+
+        {/* 背景装饰环 */}
+        <circle cx={cx} cy={cy} r={outerR + 20} fill="url(#ring-gradient)" />
+        <circle cx={cx} cy={cy} r={outerR} fill="none" stroke="var(--border-default)" strokeWidth="1" strokeDasharray="3 6" opacity="0.5" />
+        <circle cx={cx} cy={cy} r={outerR - 30} fill="none" stroke="var(--border-default)" strokeWidth="0.5" strokeDasharray="2 8" opacity="0.3" />
+
+        {/* 连接线 — 从活跃专家到中心 */}
+        {expertKeys.map((key, i) => {
+          const angle = (i / expertKeys.length) * 2 * Math.PI - Math.PI / 2
+          const ex = cx + outerR * Math.cos(angle)
+          const ey = cy + outerR * Math.sin(angle)
+          const isActive = activeExpertId === key
+          const expert = EXPERTS[key]
+
+          if (!isActive) return null
+          return (
+            <g key={`line-${key}`}>
+              {/* 连接线 */}
+              <line x1={cx} y1={cy} x2={ex} y2={ey}
+                stroke={expert.color} strokeWidth="2" strokeDasharray="4 3" opacity="0.6">
+                <animate attributeName="stroke-dashoffset" from="0" to="-14" dur="0.8s" repeatCount="indefinite" />
+              </line>
+              {/* 线上的脉冲光点 */}
+              <circle r="3" fill={expert.color} opacity="0.8">
+                <animateMotion dur="1s" repeatCount="indefinite"
+                  path={`M${cx},${cy} L${ex},${ey}`} />
+              </circle>
+            </g>
+          )
+        })}
+
+        {/* 中心光晕 */}
+        <circle cx={cx} cy={cy} r={40} fill="url(#center-glow)">
+          {isSimulating && (
+            <animate attributeName="r" values="35;45;35" dur="2s" repeatCount="indefinite" />
+          )}
+        </circle>
+
+        {/* 中心 — CrabRes 指挥官 */}
+        <circle cx={cx} cy={cy} r={innerR} fill="var(--bg-card)" stroke="var(--brand)" strokeWidth="2.5" />
+        <text x={cx} y={cy + 1} textAnchor="middle" dominantBaseline="central" fontSize="18">🦀</text>
         {isSimulating && (
-          <div className="absolute -inset-2 rounded-full border-2 border-brand/20 animate-ping" />
+          <circle cx={cx} cy={cy} r={innerR + 4} fill="none" stroke="var(--brand)" strokeWidth="1" opacity="0.3">
+            <animate attributeName="r" values={`${innerR + 2};${innerR + 10};${innerR + 2}`} dur="1.5s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.4;0;0.4" dur="1.5s" repeatCount="indefinite" />
+          </circle>
         )}
-      </div>
 
-      {/* 13 位专家环绕 */}
-      {expertKeys.map((key, i) => {
-        const expert = EXPERTS[key];
-        const angle = (i / expertKeys.length) * 2 * Math.PI - Math.PI / 2;
-        const x = centerX + radius * Math.cos(angle);
-        const y = centerY + radius * Math.sin(angle);
-        const isActive = activeExpertId === key;
+        {/* 13 位专家 */}
+        {expertKeys.map((key, i) => {
+          const angle = (i / expertKeys.length) * 2 * Math.PI - Math.PI / 2
+          const x = cx + outerR * Math.cos(angle)
+          const y = cy + outerR * Math.sin(angle)
+          const expert = EXPERTS[key]
+          const isActive = activeExpertId === key
+          const dimmed = isSimulating && !isActive && !!activeExpertId
+          const nodeR = isActive ? 18 : 15
 
-        return (
-          <div
-            key={key}
-            className="absolute -translate-x-1/2 -translate-y-1/2 transition-all duration-500 z-10"
-            style={{ 
-              left: x, 
-              top: y,
-              transform: `translate(-50%, -50%) scale(${isActive ? 1.4 : 1})`,
-              opacity: isSimulating && !isActive ? 0.4 : 1
-            }}
-          >
-            <div 
-              className={`w-10 h-10 rounded-full flex items-center justify-center text-lg border-2 shadow-sm transition-colors ${isActive ? 'bg-surface animate-bounce' : 'bg-surface/80'}`}
-              style={{ 
-                borderColor: isActive ? expert.color : `${expert.color}40`,
-                color: expert.color,
-                boxShadow: isActive ? `0 0 15px ${expert.color}60` : 'none'
-              }}
-              title={expert.name}
-            >
-              {expert.icon}
-            </div>
-            
-            {/* 连接线 */}
-            {isActive && (
-              <svg className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] pointer-events-none" style={{ left: centerX - x, top: centerY - y }}>
-                <line 
-                  x1={radius * Math.cos(angle)} 
-                  y1={radius * Math.sin(angle)} 
-                  x2={0} 
-                  y2={0} 
-                  stroke={expert.color} 
-                  strokeWidth="2" 
-                  strokeDasharray="4 2"
-                  className="animate-dash"
-                  style={{ transform: `translate(${centerX}px, ${centerY}px)` }}
-                />
-              </svg>
-            )}
-          </div>
-        );
-      })}
+          return (
+            <g key={key} style={{ transition: 'all 0.4s ease' }}>
+              {/* 活跃专家的光晕 */}
+              {isActive && (
+                <circle cx={x} cy={y} r={nodeR + 6} fill={expert.color} opacity="0.12">
+                  <animate attributeName="r" values={`${nodeR + 4};${nodeR + 10};${nodeR + 4}`} dur="1.2s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" values="0.15;0.05;0.15" dur="1.2s" repeatCount="indefinite" />
+                </circle>
+              )}
 
-      {/* 战术信息流展示 */}
+              {/* 专家节点 */}
+              <circle cx={x} cy={y} r={nodeR}
+                fill="var(--bg-card)"
+                stroke={isActive ? expert.color : `${expert.color}50`}
+                strokeWidth={isActive ? 2.5 : 1.5}
+                opacity={dimmed ? 0.35 : 1}
+                style={{ transition: 'all 0.4s ease' }}
+              />
+
+              {/* 专家 emoji */}
+              <text x={x} y={y + 1} textAnchor="middle" dominantBaseline="central"
+                fontSize={isActive ? 14 : 11}
+                opacity={dimmed ? 0.35 : 1}
+                style={{ transition: 'all 0.4s ease' }}>
+                {expert.icon}
+              </text>
+
+              {/* 活跃专家名称标签 */}
+              {isActive && (
+                <g>
+                  <rect x={x - 30} y={y + nodeR + 4} width="60" height="16" rx="4"
+                    fill={expert.color} opacity="0.9" />
+                  <text x={x} y={y + nodeR + 14} textAnchor="middle" dominantBaseline="central"
+                    fontSize="8" fill="white" fontWeight="600" fontFamily="var(--font-heading)">
+                    {expert.short}
+                  </text>
+                </g>
+              )}
+            </g>
+          )
+        })}
+      </svg>
+
+      {/* 状态文字 */}
       {isSimulating && (
-        <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 w-full text-center space-y-1">
-          <p className="text-[10px] font-mono text-brand uppercase tracking-[0.2em] animate-pulse">
-            {activeExpertId ? `${EXPERTS[activeExpertId]?.short} Analyzing...` : 'Roundtable Strategy Debate...'}
+        <div className="text-center mt-2 space-y-1">
+          <p className="text-[10px] font-mono text-brand uppercase tracking-[0.15em]">
+            {activeExpertId
+              ? `${EXPERTS[activeExpertId]?.name || 'Expert'} analyzing...`
+              : 'Roundtable in session...'}
           </p>
           <div className="flex justify-center gap-1">
             <div className="w-1 h-1 rounded-full bg-brand animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -93,5 +153,5 @@ export function RoundtableSimulation({ activeExpertId, isSimulating }: Roundtabl
         </div>
       )}
     </div>
-  );
+  )
 }

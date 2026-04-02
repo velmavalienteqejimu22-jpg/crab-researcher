@@ -107,14 +107,14 @@ export function Landing({ onGetStarted, onLogin, onCompare }: LandingProps) {
             <div className="card p-4 text-left space-y-2">
               {demoResults.map((r, i) => (
                 <div key={i} className="flex items-center gap-2 text-sm animate-fade-in"
-                  style={{ animationDelay: `${i * 0.1}s`, opacity: 0 }}>
+                  style={{ animationDelay: `${i * 0.1}s`, animationFillMode: 'forwards', opacity: 0 }}>
                   <span>{r}</span>
                 </div>
               ))}
               {demoState === 'done' && (
                 <button onClick={onGetStarted}
                   className="btn-primary w-full !py-3 !rounded-xl mt-3 animate-fade-in"
-                  style={{ animationDelay: '0.5s', opacity: 0 }}>
+                  style={{ animationDelay: '0.5s', animationFillMode: 'forwards', opacity: 0 }}>
                   See your full growth plan — free →
                 </button>
               )}
@@ -135,7 +135,7 @@ export function Landing({ onGetStarted, onLogin, onCompare }: LandingProps) {
             { icon: '🧠', title: '13 expert minds', desc: 'Economist, psychologist, copywriter, designer — a full growth team debating YOUR strategy.' },
             { icon: '✍️', title: 'Writes everything', desc: 'Every Reddit post, outreach email, landing page. Copy-paste ready. Not templates — personalized.' },
           ].map((f, i) => (
-            <div key={i} className="card p-7 text-center group animate-fade-in" style={{ animationDelay: `${i * 0.1}s`, opacity: 0 }}>
+            <div key={i} className="card p-7 text-center group animate-fade-in" style={{ animationDelay: `${i * 0.1}s`, animationFillMode: 'forwards', opacity: 0 }}>
               <div className="text-3xl mb-4">{f.icon}</div>
               <h3 className="font-heading font-semibold text-primary text-lg mb-2">{f.title}</h3>
               <p className="text-sm text-secondary leading-relaxed">{f.desc}</p>
@@ -154,25 +154,58 @@ export function Landing({ onGetStarted, onLogin, onCompare }: LandingProps) {
           You see one conversation. Behind it, 13 minds are thinking.
         </p>
 
-        {/* 模拟群聊界面 */}
-        <div className="card p-5 space-y-3 card-glow">
-          {[
-            { icon: '🔍', name: 'Market Researcher', color: '#0EA5E9', msg: '"Found 3 competitors: FocusBear ($4.99/mo, 12K users), Freedom ($8.99/mo, 500K users), Cold Turkey ($39 one-time). Your pricing gap is between $5-9/mo."' },
-            { icon: '💰', name: 'Economist', color: '#10B981', msg: '"At $50/mo budget, paid ads are out. Reddit organic + cold DM is your best ROI path. Estimated CAC: $0.80."' },
-            { icon: '🧠', name: 'Psychologist', color: '#14B8A6', msg: '"Remote workers\' core anxiety is guilt about wasted time. Frame FocusFlow as \'proof you\'re productive\' — not just a blocker."' },
-            { icon: '🦀', name: 'CrabRes', color: '#F97316', msg: '"Based on the research: lead with the \'deep work tracker\' angle, not \'website blocker.\' Here\'s your first Reddit post..."' },
-          ].map((m, i) => (
-            <div key={i} className="flex gap-2.5 animate-fade-in" style={{ animationDelay: `${0.3 + i * 0.15}s`, opacity: 0 }}>
-              <div className="w-7 h-7 shrink-0 rounded-full flex items-center justify-center text-xs mt-0.5"
-                style={{ background: m.color + '15', color: m.color }}>
-                {m.icon}
-              </div>
-              <div>
-                <p className="text-[10px] font-heading font-medium" style={{ color: m.color }}>{m.name}</p>
-                <p className="text-sm text-secondary leading-relaxed">{m.msg}</p>
-              </div>
+        {/* 模拟群聊界面 — 像真实 app 的预览 */}
+        <div className="card overflow-hidden card-glow">
+          {/* 伪 app 头部 */}
+          <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border bg-hover/50">
+            <div className="flex -space-x-1.5">
+              {['#F97316', '#0EA5E9', '#10B981', '#14B8A6'].map((c, i) => (
+                <div key={i} className="w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-[9px]"
+                  style={{ background: c + '20', color: c }}>
+                  {['🦀', '🔍', '💰', '🧠'][i]}
+                </div>
+              ))}
             </div>
-          ))}
+            <div className="flex-1">
+              <p className="text-xs font-heading font-semibold text-primary">Growth Team</p>
+              <p className="text-[10px] text-muted">4 experts active</p>
+            </div>
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          </div>
+
+          {/* 消息列表 */}
+          <div className="p-4 space-y-3">
+            {[
+              { icon: '🔍', name: 'Market Researcher', color: '#0EA5E9', msg: 'Found 3 competitors: FocusBear ($4.99/mo), Freedom ($8.99/mo), Cold Turkey ($39 one-time). Your pricing sweet spot is $5-9/mo.' },
+              { icon: '💰', name: 'Economist', color: '#10B981', msg: 'At $50/mo budget, skip ads. Reddit organic + cold DM = best ROI. Estimated CAC: $0.80.' },
+              { icon: '🧠', name: 'Psychologist', color: '#14B8A6', msg: 'Frame it as "proof you\'re productive" — not "website blocker." Remote workers\' core anxiety is guilt about wasted time.' },
+              { icon: '🦀', name: 'CrabRes', color: '#F97316', msg: 'Based on research: lead with "deep work tracker" angle. Here\'s your first Reddit post, ready to copy-paste...' },
+            ].map((m, i) => (
+              <div key={i} className="flex gap-2.5 animate-fade-in" style={{ animationDelay: `${0.3 + i * 0.15}s`, animationFillMode: 'forwards', opacity: 0 }}>
+                <div className="w-7 h-7 shrink-0 rounded-full flex items-center justify-center text-[10px] mt-0.5"
+                  style={{ background: m.color + '12', color: m.color, border: `1.5px solid ${m.color}30` }}>
+                  {m.icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-heading font-semibold mb-0.5" style={{ color: m.color }}>{m.name}</p>
+                  <div className="px-3 py-2 rounded-xl rounded-tl-sm text-[13px] text-secondary leading-relaxed"
+                    style={{ background: m.color + '06', border: `1px solid ${m.color}10` }}>
+                    {m.msg}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* 伪输入框 */}
+          <div className="px-4 py-3 border-t border-border flex gap-2">
+            <div className="flex-1 bg-hover rounded-xl px-3 py-2 text-xs text-muted">
+              Describe your product...
+            </div>
+            <div className="w-8 h-8 rounded-xl bg-brand flex items-center justify-center">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -188,7 +221,7 @@ export function Landing({ onGetStarted, onLogin, onCompare }: LandingProps) {
             c.species = species
             c.mood = 'happy'
             return (
-              <div key={species} className="flex flex-col items-center gap-2 animate-fade-in" style={{ animationDelay: `${i * 0.1}s`, opacity: 0 }}>
+              <div key={species} className="flex flex-col items-center gap-2 animate-fade-in" style={{ animationDelay: `${i * 0.1}s`, animationFillMode: 'forwards', opacity: 0 }}>
                 <CreatureRenderer creature={c} size={56} animate={false} />
                 <span className="text-xs text-muted font-heading">{SPECIES_CONFIG[species].displayName}</span>
               </div>

@@ -219,12 +219,12 @@ export function Surface({ creature, onChat, onPlan, onSettings }: SurfaceProps) 
           
           <div className="relative z-10">
             <p className="text-sm font-bold text-primary mb-1">
-              {creature.market === 'global' ? '5 Targeted Leads Found' : '发现 5 个精准猎杀目标'}
+              {creature.market === 'global' ? 'Ready-to-Post Content' : '即发文案生成器'}
             </p>
             <p className="text-xs text-secondary mb-4 opacity-80 leading-relaxed">
               {creature.market === 'global' 
-                ? 'Experts identified founders struggling with distribution. Ready for engagement.' 
-                : '专家团锁定了正在为分发发愁的创始人。已准备好“降维打击”话术。'}
+                ? 'Generate platform-native posts for your target communities. Edit, then send.' 
+                : '为你的目标社区生成平台原生文案。编辑后一键发送。'}
             </p>
             
             <div className="space-y-3">
@@ -236,14 +236,14 @@ export function Surface({ creature, onChat, onPlan, onSettings }: SurfaceProps) 
                 const isOverLimit = charCount > 280
 
                 return (
-                  <div key={i} className="rounded-xl bg-black/20 border border-white/5 overflow-hidden transition-all">
-                    <div className="flex items-center justify-between p-3 cursor-pointer group/item hover:bg-black/20"
+                  <div key={i} className="rounded-xl bg-surface border border-border overflow-hidden transition-all hover:border-brand/30">
+                    <div className="flex items-center justify-between p-3 cursor-pointer group/item hover:bg-hover"
                       onClick={() => !bullet && generateBullet(i)}>
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-brand/10 flex items-center justify-center text-brand text-xs font-bold">#0{i+1}</div>
                         <div>
-                          <div className="text-xs font-bold text-primary">Target Group: {i === 0 ? 'r/SaaS' : i === 1 ? 'r/IndieHackers' : 'X/Founders'}</div>
-                          <div className="text-[10px] text-muted">Awaiting your response...</div>
+                          <div className="text-xs font-bold text-primary">{creature.market === 'global' ? ['Reddit Post', 'X Thread', 'LinkedIn Post'][i] : ['Reddit 帖子', 'X 推文', 'LinkedIn 帖'][i]}</div>
+                          <div className="text-[10px] text-muted">{creature.market === 'global' ? 'Click to generate' : '点击生成'}</div>
                         </div>
                       </div>
                       {!bullet ? (
@@ -263,7 +263,7 @@ export function Surface({ creature, onChat, onPlan, onSettings }: SurfaceProps) 
                         <textarea 
                           value={bullet}
                           onChange={(e) => setHunterBullets(prev => ({ ...prev, [i]: e.target.value }))}
-                          className={`w-full bg-black/40 border p-3 rounded-lg text-xs font-mono leading-relaxed transition-colors focus:outline-none ${isOverLimit ? 'border-red-500/50 focus:border-red-500' : 'border-white/10 focus:border-brand/50'}`}
+                          className={`w-full bg-hover border p-3 rounded-lg text-xs font-mono leading-relaxed transition-colors focus:outline-none ${isOverLimit ? 'border-red-500/50 focus:border-red-500' : 'border-border focus:border-brand/50'}`}
                           rows={4}
                         />
                         <div className="flex justify-between items-center mt-3">
