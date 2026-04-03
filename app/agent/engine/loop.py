@@ -205,6 +205,41 @@ class AgentLoop:
             mood_injection = self.mood_sensor.get_prompt_injection(mood_signal)
             logger.info(f"Mood sensing: {mood_signal.mood.value} (confidence={mood_signal.confidence:.2f})")
 
+        # ========== 硬编码保底层（不依赖 LLM 遵循指令）==========
+        
+        # 1. 自我认知注入：如果用户问"你是什么"或提到 crabres，直接回答不走 LLM 决策
+        msg_lower = user_message.lower().strip()
+        self_awareness_triggers = [
+            "what are you", "who are you", "你是什么", "你是谁",
+            "what do you do", "你做什么", "介绍一下你", "introduce yourself",
+        ]
+        if any(t in msg_lower for t in self_awareness_triggers):
+            self._message_history.append({"role": "user", "content": user_message})
+            lang = self._language
+            if lang == "zh":
+                reply = "我是 CrabRes，一个 AI 增长策略 Agent。我帮独立开发者和小团队研究市场、分析竞品、制定可执行的增长计划。告诉我你在做什么产品，我就开始工作。"
+            else:
+                reply = "I'm CrabRes — an AI growth agent. I research your market, analyze competitors, and create actionable growth plans. Tell me what you're building and I'll get to work."
+            self._message_history.append({"role": "assistant", "content": reply})
+            yield {"type": "message", "content": reply}
+            await self._persist_state()
+            return
+
+        # 2. 产品信息检测：用户消息包含足够产品信息 → 直接进入 research，不让 LLM 决定"要不要先问"
+        import re
+        has_product_info = self._detect_product_info(user_message)
+        product_in_memory = await self.memory.load("product")
+        has_product_in_memory = bool(product_in_memory and product_in_memory.get("raw_description"))
+        
+        # 3. ask_user 计数器：连续 ask 不超过 1 次
+        self._ask_count = getattr(self, '_ask_count', 0)
+        
+        # 4. 已 scrape 的 URL 去重集合
+        if not hasattr(self, '_scraped_urls'):
+            self._scraped_urls = set()
+
+        # ========== 保底层结束 ==========
+
         # 如果是新启动的会话（或进程重启），尝试从磁盘加载历史
         if not self._message_history:
             await self._load_state()
@@ -253,6 +288,59 @@ class AgentLoop:
                 # 1. THINK: 让 Coordinator（首席增长官）决定下一步
                 yield {"type": "status", "content": "Coordinator deciding next tactical move..."}
                 decision = await self._think(context)
+
+                # ========== 硬编码决策拦截层 ==========
+                
+                # 拦截 1: 连续 ask_user 超过 1 次 → 强制切到 research 或 output
+                if decision.type == ActionType.ASK_USER:
+                    self._ask_count += 1
+                    if self._ask_count > 1 and (has_product_info or has_product_in_memory):
+                        logger.info(f"OVERRIDE: ask_count={self._ask_count}, has product info → forcing web_search")
+                        product_desc = user_message if has_product_info else product_in_memory.get("raw_description", "")
+                        decision = AgentAction(
+                            type=ActionType.TOOL_CALL,
+                            content="Researching your product market",
+                            tool_name="web_search",
+                            tool_args={"query": f"{product_desc[:100]} competitors market analysis"},
+                        )
+                    elif self._ask_count > 2:
+                        # 问了 3 次还没产品信息，给个兜底回复
+                        logger.info("OVERRIDE: ask_count > 2 without product info → giving helpful output")
+                        decision = AgentAction(
+                            type=ActionType.OUTPUT,
+                            content="I need to know what you're building to help. Just give me a one-liner like 'AI resume tool for job seekers' and I'll start researching immediately.",
+                        )
+                else:
+                    self._ask_count = 0  # 不是 ask → 重置计数
+                
+                # 拦截 2: 工具去重 — 同一 URL 不重复 scrape
+                if decision.type == ActionType.TOOL_CALL and decision.tool_name in ("scrape_website", "browse_website", "deep_scrape"):
+                    url = (decision.tool_args or {}).get("url", "")
+                    if url and url in self._scraped_urls:
+                        logger.info(f"OVERRIDE: URL already scraped, skipping: {url[:60]}")
+                        # 跳过重复的 scrape，换成 web_search
+                        product_desc = (await self.memory.load("product") or {}).get("raw_description", user_message)
+                        decision = AgentAction(
+                            type=ActionType.TOOL_CALL,
+                            content="Searching for market data",
+                            tool_name="web_search",
+                            tool_args={"query": f"{product_desc[:80]} market size competitors pricing"},
+                        )
+                    elif url:
+                        self._scraped_urls.add(url)
+                
+                # 拦截 3: 同一个 web_search query 不重复搜索
+                if decision.type == ActionType.TOOL_CALL and decision.tool_name == "web_search":
+                    query = (decision.tool_args or {}).get("query", "")
+                    if not hasattr(self, '_searched_queries'):
+                        self._searched_queries = set()
+                    if query and query in self._searched_queries:
+                        logger.info(f"OVERRIDE: query already searched, skipping: {query[:60]}")
+                        continue  # 跳过这次迭代
+                    elif query:
+                        self._searched_queries.add(query)
+
+                # ========== 拦截层结束 ==========
 
                 if decision.type == ActionType.OUTPUT:
                     content = decision.content
@@ -417,41 +505,73 @@ class AgentLoop:
         )
         
         if not has_output and len(tool_results) >= 1:
-            logger.info(f"Loop exhausted with {len(tool_results)} tool results but no output. Forcing roundtable fallback.")
-            yield {"type": "status", "content": "Finalizing analysis with expert roundtable..."}
+            # 🔥 搜索结果质量门控：过滤掉错误和无效的结果
+            useful_results = [
+                r for r in tool_results
+                if isinstance(r.get("result"), dict)
+                and not r["result"].get("error")
+                and len(json.dumps(r["result"], default=str)) > 200
+            ]
             
-            from app.agent.engine.context_engine import select_roundtable_experts
-            product_type = context.get("product", {}).get("type", "default")
-            expert_ids = select_roundtable_experts(product_type, context.get("user_message", ""))
-            user_msg = context.get("user_message", "")
-            task = (
-                f"Analyze this product and create a growth strategy. "
-                f"Product: {user_msg}. "
-                f"We have collected {len(tool_results)} research data points. "
-                f"Synthesize the research into actionable Playbooks."
-            )
-            
-            try:
-                async for evt in self._run_roundtable(expert_ids, task, context):
-                    if evt.get("type") == "expert_thinking":
-                        eid = evt.get("expert_id", "")
-                        self.state.expert_outputs[eid] = evt.get("content", "")
-                    yield evt
-            except Exception as e:
-                logger.error(f"Fallback roundtable failed: {e}")
-                # 如果圆桌也失败了，直接用搜索数据生成一个基础输出
-                research_summary = "\n".join(
-                    f"- {json.dumps(r, ensure_ascii=False, default=str)[:300]}" 
-                    for r in tool_results[:5]
+            if len(useful_results) >= 2:
+                # 有效数据足够 → 正常圆桌
+                logger.info(f"Fallback: {len(useful_results)} useful results → launching roundtable")
+                yield {"type": "status", "content": "Finalizing analysis with expert roundtable..."}
+                
+                from app.agent.engine.context_engine import select_roundtable_experts
+                product_type = context.get("product", {}).get("type", "default")
+                expert_ids = select_roundtable_experts(product_type, context.get("user_message", ""))
+                user_msg = context.get("user_message", "")
+                task = (
+                    f"Analyze this product and create a growth strategy. "
+                    f"Product: {user_msg}. "
+                    f"We have collected {len(useful_results)} research data points. "
+                    f"Synthesize the research into actionable Playbooks."
                 )
-                yield {
-                    "type": "message",
-                    "content": (
-                        f"Based on my research:\n\n{research_summary}\n\n"
-                        f"I encountered an issue assembling the full expert analysis. "
-                        f"Please try again or ask a more specific question."
-                    ),
-                }
+                
+                try:
+                    async for evt in self._run_roundtable(expert_ids, task, context):
+                        if evt.get("type") == "expert_thinking":
+                            eid = evt.get("expert_id", "")
+                            self.state.expert_outputs[eid] = evt.get("content", "")
+                        yield evt
+                except Exception as e:
+                    logger.error(f"Fallback roundtable failed: {e}")
+                    yield {
+                        "type": "message",
+                        "content": "I ran into an issue assembling the expert analysis. Could you try again?",
+                    }
+            else:
+                # 搜索结果质量太差 → 不浪费 token 开圆桌，直接用知识库给基础建议
+                logger.info(f"Fallback: only {len(useful_results)} useful results → knowledge-based output")
+                product_data = context.get("product", {})
+                product_desc = product_data.get("raw_description", context.get("user_message", ""))
+                
+                lang = getattr(self, '_language', 'en')
+                if lang == "zh":
+                    yield {
+                        "type": "message",
+                        "content": (
+                            f"我搜索了一些市场数据，但结果不够充分来做完整分析。"
+                            f"基于你的产品描述，我建议先从以下方向入手：\n\n"
+                            f"1. **找到你的用户在哪**：搜索 Reddit/小红书上讨论类似问题的帖子\n"
+                            f"2. **看看竞品怎么做的**：找 3 个直接竞品，分析他们的流量来源\n"
+                            f"3. **写第一篇内容**：在用户最活跃的社区发一篇真实的分享\n\n"
+                            f"能告诉我你的产品具体解决什么问题吗？我可以做更精准的研究。"
+                        ),
+                    }
+                else:
+                    yield {
+                        "type": "message",
+                        "content": (
+                            f"I searched for market data but didn't find enough for a full analysis. "
+                            f"Based on what I know, here's where to start:\n\n"
+                            f"1. **Find where your users are** — search Reddit, X, or Hacker News for discussions about the problem you solve\n"
+                            f"2. **Study 3 competitors** — look at their traffic sources, pricing, and what users say about them\n"
+                            f"3. **Write your first post** — share something genuine in the community where your users hang out\n\n"
+                            f"Can you tell me more about what specific problem your product solves? I'll do a more targeted search."
+                        ),
+                    }
 
         # 持久化状态
         await self._persist_state()
@@ -1111,6 +1231,42 @@ The user came here because they're tired of generic advice. Show them what real 
             "turn": self.state.turn_count,
             "timestamp": time.time(),
         })
+
+    def _detect_product_info(self, message: str) -> bool:
+        """
+        硬编码检测：用户消息是否包含足够的产品信息可以开始研究
+        
+        不靠 LLM 判断，用关键词启发式。
+        只要检测到产品描述就返回 True，Agent 应该立即 research。
+        """
+        msg = message.lower()
+        # 长度检测：超过 30 字且不是纯问候
+        if len(msg) < 30:
+            return False
+        
+        # 产品描述关键词（任一命中）
+        product_signals = [
+            'my product', 'i built', 'i made', "i'm building", 'i have a',
+            "it's a", 'it is a', 'we built', 'our product', 'we made',
+            '我的产品', '我做了', '我们做了', '我在做', '我开发了',
+            'saas', 'app', 'tool', 'platform', 'service', 'marketplace',
+            'helps', 'for users', 'for developers', 'for teams',
+            '$', '/mo', '/month', 'pricing', 'free', 'freemium',
+            'users', 'customers', 'target', 'audience',
+            'growth', 'marketing', 'launch', 'mvp',
+            '帮助', '用户', '增长', '营销', '独立开发',
+            # CrabRes 自身
+            'crabres', 'ai growth agent',
+        ]
+        
+        if any(kw in msg for kw in product_signals):
+            return True
+        
+        # URL 检测
+        if 'http' in msg or '.com' in msg or '.io' in msg or '.app' in msg:
+            return True
+        
+        return False
 
     async def _maybe_save_product_info(self, user_message: str):
         """如果用户消息包含产品信息，自动存入记忆"""
