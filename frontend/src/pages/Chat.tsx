@@ -28,21 +28,46 @@ interface Message {
   timestamp: number
 }
 
+const STORAGE_KEY = 'crabres_chat_messages'
+const SESSION_KEY = 'crabres_chat_session'
+
 export function Chat({ creature, onBack }: ChatProps) {
-  const [messages, setMessages] = useState<Message[]>([{
-    id: '0', role: 'assistant',
-    content: "War Room active. Tell me about your product — I'll deploy the research team immediately. Competitors, target users, growth plan — everything will be ready.",
-    timestamp: Date.now(),
-  }])
+  // 从 localStorage 恢复消息和 session
+  const [messages, setMessages] = useState<Message[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      }
+    } catch {}
+    return [{
+      id: '0', role: 'assistant' as const,
+      content: "War Room active. Tell me about your product — I'll deploy the research team immediately.",
+      timestamp: Date.now(),
+    }]
+  })
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [activeExpert, setActiveExpert] = useState<string | undefined>(undefined)
-  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [sessionId, setSessionId] = useState<string | null>(() => localStorage.getItem(SESSION_KEY))
   const [showRoundtable, setShowRoundtable] = useState(true)
   const [showAtMenu, setShowAtMenu] = useState(false)
   const [atFilter, setAtFilter] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  // 持久化消息到 localStorage
+  useEffect(() => {
+    // 只保存最近 100 条消息（避免 localStorage 爆）
+    const toSave = messages.slice(-100)
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave)) } catch {}
+  }, [messages])
+
+  // 持久化 sessionId
+  useEffect(() => {
+    if (sessionId) localStorage.setItem(SESSION_KEY, sessionId)
+  }, [sessionId])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -300,13 +325,18 @@ export function Chat({ creature, onBack }: ChatProps) {
                 }
               </div>
             )}
-            <div className="flex gap-2">
-              <input
+            <div className="flex gap-2 items-end">
+              <textarea
                 ref={inputRef}
                 value={input}
                 onChange={e => {
                   const val = e.target.value
                   setInput(val)
+                  // 自动扩展高度
+                  if (inputRef.current) {
+                    inputRef.current.style.height = 'auto'
+                    inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 120) + 'px'
+                  }
                   // 检测 @ 触发
                   if (val.endsWith('@') || (val.includes('@') && !val.includes(' '))) {
                     setShowAtMenu(true)
@@ -317,13 +347,15 @@ export function Chat({ creature, onBack }: ChatProps) {
                 }}
                 onKeyDown={e => {
                   if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
                     setShowAtMenu(false)
                     sendMessage()
                   }
                   if (e.key === 'Escape') setShowAtMenu(false)
                 }}
-                placeholder="Message... (type @ to DM an expert)"
-                className="flex-1 !rounded-xl"
+                placeholder="Message... (type @ to DM an expert, Shift+Enter for new line)"
+                className="flex-1 !rounded-xl resize-none !py-2.5 !min-h-[40px] !max-h-[120px]"
+                rows={1}
                 disabled={loading}
                 aria-label="Message input"
               />

@@ -257,7 +257,7 @@ function TaskCard({ icon, title, subtitle, action, onAction }: { icon: React.Rea
           <p className="text-sm font-bold text-primary tracking-tight">{title}</p>
           <p className="text-xs text-muted truncate opacity-70 font-mono tracking-tighter">{subtitle}</p>
         </div>
-        <button onClick={onAction} className="text-[11px] font-bold text-brand opacity-0 group-hover:opacity-100 transition-all px-3 py-1.5 rounded-lg border border-brand/20 hover:bg-brand hover:text-white">
+        <button onClick={onAction} className="text-[11px] font-bold text-brand sm:opacity-0 sm:group-hover:opacity-100 transition-all px-3 py-1.5 rounded-lg border border-brand/20 hover:bg-brand hover:text-white">
           {action} →
         </button>
       </div>
@@ -274,7 +274,7 @@ function DiscoveryCard({ title, action, onAction }: { title: string; action: str
       <div className="flex-1 min-w-0">
         <p className="text-sm font-bold text-primary tracking-tight">{title}</p>
       </div>
-      <button onClick={onAction} className="text-[11px] font-bold text-accent opacity-0 group-hover:opacity-100 transition-all px-3 py-1.5 rounded-lg border border-accent/20 hover:bg-accent hover:text-white">
+      <button onClick={onAction} className="text-[11px] font-bold text-accent sm:opacity-0 sm:group-hover:opacity-100 transition-all px-3 py-1.5 rounded-lg border border-accent/20 hover:bg-accent hover:text-white">
         {action} →
       </button>
     </div>
