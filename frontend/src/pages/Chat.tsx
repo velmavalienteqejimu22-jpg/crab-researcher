@@ -114,15 +114,14 @@ export function Chat({ creature, onBack }: ChatProps) {
   const expertCount = activeExperts.size
 
   return (
-    <div className="min-h-screen bg-surface flex flex-col relative">
-      {/* ====== War Room 头部状态条 ====== */}
-      <div className="border-b border-border bg-glass sticky top-0 z-20">
+    <div className="h-screen flex flex-col bg-surface">
+      {/* ====== 头部状态条 — 固定顶部 ====== */}
+      <div className="shrink-0 border-b border-border bg-glass z-20">
         <div className="max-w-5xl mx-auto flex items-center gap-3 px-4 py-2.5">
           <button onClick={onBack} className="p-2 rounded-xl hover:bg-hover transition-colors" aria-label="Back">
             <ArrowLeftIcon />
           </button>
 
-          {/* 生物体 + 专家头像群 */}
           <div className="flex -space-x-1.5">
             <img src={PixImg} alt="Pix" className={`w-7 h-7 rounded-full object-cover border-2 border-white ${loading ? 'animate-pulse' : ''}`} />
             {Array.from(activeExperts).slice(0, 5).map(eid => {
@@ -142,7 +141,6 @@ export function Chat({ creature, onBack }: ChatProps) {
             </p>
           </div>
 
-          {/* 圆桌开关 */}
           <button
             onClick={() => setShowRoundtable(!showRoundtable)}
             className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${showRoundtable ? 'bg-brand/10 text-brand border border-brand/20' : 'bg-hover text-muted border border-border'}`}
@@ -153,32 +151,45 @@ export function Chat({ creature, onBack }: ChatProps) {
         </div>
       </div>
 
-      {/* ====== 主体：圆桌面板 + 消息流 ====== */}
-      <div className="flex-1 flex max-w-5xl mx-auto w-full overflow-hidden">
-        {/* 左栏：圆桌（桌面端可见） */}
+      {/* ====== 主体 — 填满剩余高度 ====== */}
+      <div className="flex-1 flex max-w-5xl mx-auto w-full min-h-0">
+
+        {/* 左栏：圆桌 — 固定不滚动 */}
         {showRoundtable && (
-          <div className="hidden sm:flex flex-col items-center justify-center w-[320px] shrink-0 border-r border-border px-4 py-6 bg-surface">
-            <RoundtableSimulation activeExpertId={activeExpert} isSimulating={loading || !!activeExpert} />
-            {/* 专家列表 */}
-            <div className="w-full mt-4 space-y-1 max-h-[200px] overflow-y-auto">
+          <div className="hidden sm:flex flex-col w-[300px] shrink-0 border-r border-border bg-surface overflow-y-auto">
+            <div className="flex-1 flex flex-col items-center justify-center px-3 py-4">
+              <RoundtableSimulation activeExpertId={activeExpert} isSimulating={loading || !!activeExpert} />
+            </div>
+
+            {/* 专家列表 — 可点击 @ 私聊 */}
+            <div className="shrink-0 border-t border-border px-2 py-2 space-y-0.5">
+              <p className="text-[9px] text-muted px-2 py-1 font-heading uppercase tracking-wider">Click to @ direct message</p>
               {Object.entries(EXPERTS).map(([key, expert]) => {
                 const isActive = activeExpert === key
                 const contributed = activeExperts.has(key)
                 return (
-                  <div key={key} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-all ${isActive ? 'bg-brand/8 border border-brand/15' : contributed ? 'opacity-80' : 'opacity-40'}`}>
-                    <img src={expert.avatar} alt={expert.short} className="w-5 h-5 rounded-full object-cover" />
-                    <span className={`font-heading ${isActive ? 'font-bold text-primary' : 'text-muted'}`}>{expert.short}</span>
-                    {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-brand animate-pulse" />}
-                    {contributed && !isActive && <span className="ml-auto text-[9px] text-brand/60">✓</span>}
-                  </div>
+                  <button key={key}
+                    onClick={() => {
+                      setInput(`@${key} `)
+                      inputRef.current?.focus()
+                    }}
+                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all text-left hover:bg-hover ${isActive ? 'bg-brand/8 border border-brand/15' : contributed ? 'opacity-90' : 'opacity-50 hover:opacity-80'}`}
+                  >
+                    <img src={expert.avatar} alt={expert.short} className="w-5 h-5 rounded-full object-cover shrink-0" />
+                    <span className={`font-heading truncate ${isActive ? 'font-bold text-primary' : 'text-muted'}`}>{expert.short}</span>
+                    {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-brand animate-pulse shrink-0" />}
+                    {contributed && !isActive && <span className="ml-auto text-[9px] text-brand/60 shrink-0">✓</span>}
+                  </button>
                 )
               })}
             </div>
           </div>
         )}
 
-        {/* 右栏：消息流 */}
-        <div className="flex-1 flex flex-col min-w-0">
+        {/* 右栏：消息流 + 输入框 */}
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
+
+          {/* 消息区 — 可滚动 */}
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
             {messages.map(msg => {
               if (msg.role === 'user') {
@@ -261,8 +272,8 @@ export function Chat({ creature, onBack }: ChatProps) {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* ====== 输入区 + @专家选择器 ====== */}
-          <div className="px-4 py-3 border-t border-border bg-glass relative">
+          {/* ====== 输入区 — 固定底部 ====== */}
+          <div className="shrink-0 px-4 py-3 border-t border-border bg-glass relative">
             {/* @ 弹出菜单 */}
             {showAtMenu && (
               <div className="absolute bottom-full left-4 right-4 mb-1 card p-2 shadow-lg max-h-[300px] overflow-y-auto z-30">
