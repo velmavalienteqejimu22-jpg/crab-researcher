@@ -9,6 +9,8 @@ import { useState, useEffect } from 'react'
 import { CreatureRenderer } from '../components/creature/CreatureRenderer'
 import type { CreatureState } from '../components/creature/types'
 import { api } from '../lib/api'
+import { BellIcon, SettingsIcon, PenIcon, ChatIcon, ZapIcon, ShareIcon } from '../components/ui/Icons'
+import LogoImg from '../assets/CrabRes-LOGO.png'
 
 interface SurfaceProps {
   creature: CreatureState
@@ -53,7 +55,7 @@ export function Surface({ creature, onChat, onPlan, onSettings }: SurfaceProps) 
       {/* 顶部栏 */}
       <div className="w-full flex items-center justify-between mb-8">
         <div className="flex items-center gap-2.5">
-          <span className="text-xl">🦀</span>
+          <img src={LogoImg} alt="CrabRes" className="w-7 h-7 rounded-lg" />
           <span className="font-heading font-bold text-primary tracking-tight">CrabRes</span>
         </div>
         <div className="flex items-center gap-3">
@@ -320,23 +322,4 @@ function getGreeting(creature: CreatureState): string {
   return options[dayHash % options.length]
 }
 
-// ====== 自定义图标（简洁线性风格）======
-
-function BellIcon() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-muted"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-}
-function SettingsIcon() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-muted"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-}
-function PenIcon() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-}
-function ChatIcon() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-}
-function ZapIcon() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-}
-function ShareIcon() {
-  return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-}
+// Icons imported from ../components/ui/Icons

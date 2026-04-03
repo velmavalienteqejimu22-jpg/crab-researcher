@@ -126,10 +126,8 @@ export function Chat({ creature, onBack }: ChatProps) {
             {Array.from(activeExperts).slice(0, 5).map(eid => {
               const expert = EXPERTS[eid || '']
               return expert ? (
-                <div key={eid} className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] border-2 border-white shadow-sm"
-                  style={{ background: expert.color + '18', color: expert.color }}>
-                  {expert.icon}
-                </div>
+                <img key={eid} src={expert.avatar} alt={expert.short}
+                  className="w-7 h-7 rounded-full border-2 border-white shadow-sm object-cover" />
               ) : null
             })}
           </div>
@@ -166,7 +164,7 @@ export function Chat({ creature, onBack }: ChatProps) {
                 const contributed = activeExperts.has(key)
                 return (
                   <div key={key} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-all ${isActive ? 'bg-brand/8 border border-brand/15' : contributed ? 'opacity-80' : 'opacity-40'}`}>
-                    <span className="text-sm" style={{ color: expert.color }}>{expert.icon}</span>
+                    <img src={expert.avatar} alt={expert.short} className="w-5 h-5 rounded-full object-cover" />
                     <span className={`font-heading ${isActive ? 'font-bold text-primary' : 'text-muted'}`}>{expert.short}</span>
                     {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-brand animate-pulse" />}
                     {contributed && !isActive && <span className="ml-auto text-[9px] text-brand/60">✓</span>}
@@ -212,10 +210,9 @@ export function Chat({ creature, onBack }: ChatProps) {
                 if (!expert) return null
                 return (
                   <div key={msg.id} className="flex gap-2.5 animate-fade-in">
-                    <div className="w-7 h-7 shrink-0 mt-0.5 rounded-full flex items-center justify-center text-[10px]"
-                      style={{ background: expert.color + '12', color: expert.color, border: `1.5px solid ${expert.color}25` }}>
-                      {expert.icon}
-                    </div>
+                    <img src={expert.avatar} alt={expert.short}
+                      className="w-7 h-7 shrink-0 mt-0.5 rounded-full object-cover"
+                      style={{ border: `1.5px solid ${expert.color}40` }} />
                     <div className="max-w-[85%]">
                       <p className="text-[10px] font-heading font-semibold mb-1" style={{ color: expert.color }}>
                         {expert.name}

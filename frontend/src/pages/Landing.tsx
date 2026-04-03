@@ -12,6 +12,8 @@
 import { useState } from 'react'
 import { CreatureRenderer } from '../components/creature/CreatureRenderer'
 import { generateCreature, SPECIES_CONFIG } from '../components/creature/types'
+import { EXPERTS } from '../lib/experts'
+import LogoImg from '../assets/CrabRes-LOGO.png'
 
 interface LandingProps {
   onGetStarted: () => void
@@ -78,7 +80,7 @@ export function Landing({ onGetStarted, onLogin, onCompare }: LandingProps) {
       {/* Nav */}
       <nav className="flex items-center justify-between px-6 py-4 max-w-5xl mx-auto relative z-10">
         <div className="flex items-center gap-2.5">
-          <span className="text-xl">🦀</span>
+          <img src={LogoImg} alt="CrabRes" className="w-7 h-7 rounded-lg" />
           <span className="font-heading font-bold text-primary tracking-tight">CrabRes</span>
         </div>
         <div className="flex items-center gap-3">
@@ -248,12 +250,13 @@ export function Landing({ onGetStarted, onLogin, onCompare }: LandingProps) {
           {/* 伪 app 头部 */}
           <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border bg-hover/50">
             <div className="flex -space-x-1.5">
-              {['#F97316', '#0EA5E9', '#10B981', '#14B8A6'].map((c, i) => (
-                <div key={i} className="w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-[9px]"
-                  style={{ background: c + '20', color: c }}>
-                  {['🦀', '🔍', '💰', '🧠'][i]}
-                </div>
-              ))}
+              {['market_researcher', 'economist', 'psychologist', 'product_growth'].map((eid) => {
+                const expert = EXPERTS[eid]
+                return expert ? (
+                  <img key={eid} src={expert.avatar} alt={expert.short}
+                    className="w-6 h-6 rounded-full border-2 border-white object-cover" />
+                ) : null
+              })}
             </div>
             <div className="flex-1">
               <p className="text-xs font-heading font-semibold text-primary">Growth Team</p>
@@ -265,16 +268,15 @@ export function Landing({ onGetStarted, onLogin, onCompare }: LandingProps) {
           {/* 消息列表 */}
           <div className="p-4 space-y-3">
             {[
-              { icon: '🔍', name: 'Market Researcher', color: '#0EA5E9', msg: 'Found 3 competitors: FocusBear ($4.99/mo), Freedom ($8.99/mo), Cold Turkey ($39 one-time). Your pricing sweet spot is $5-9/mo.' },
-              { icon: '💰', name: 'Economist', color: '#10B981', msg: 'At $50/mo budget, skip ads. Reddit organic + cold DM = best ROI. Estimated CAC: $0.80.' },
-              { icon: '🧠', name: 'Psychologist', color: '#14B8A6', msg: 'Frame it as "proof you\'re productive" — not "website blocker." Remote workers\' core anxiety is guilt about wasted time.' },
-              { icon: '🦀', name: 'CrabRes', color: '#F97316', msg: 'Based on research: lead with "deep work tracker" angle. Here\'s your first Reddit post, ready to copy-paste...' },
+              { eid: 'market_researcher', name: 'Market Researcher', color: '#0EA5E9', msg: 'Found 3 competitors: FocusBear ($4.99/mo), Freedom ($8.99/mo), Cold Turkey ($39 one-time). Your pricing sweet spot is $5-9/mo.' },
+              { eid: 'economist', name: 'Economist', color: '#10B981', msg: 'At $50/mo budget, skip ads. Reddit organic + cold DM = best ROI. Estimated CAC: $0.80.' },
+              { eid: 'psychologist', name: 'Psychologist', color: '#14B8A6', msg: 'Frame it as "proof you\'re productive" — not "website blocker." Remote workers\' core anxiety is guilt about wasted time.' },
+              { eid: 'product_growth', name: 'CrabRes', color: '#F97316', msg: 'Based on research: lead with "deep work tracker" angle. Here\'s your first Reddit post, ready to copy-paste...' },
             ].map((m, i) => (
               <div key={i} className="flex gap-2.5 animate-fade-in" style={{ animationDelay: `${0.3 + i * 0.15}s`, animationFillMode: 'forwards', opacity: 0 }}>
-                <div className="w-7 h-7 shrink-0 rounded-full flex items-center justify-center text-[10px] mt-0.5"
-                  style={{ background: m.color + '12', color: m.color, border: `1.5px solid ${m.color}30` }}>
-                  {m.icon}
-                </div>
+                <img src={EXPERTS[m.eid]?.avatar} alt={m.name}
+                  className="w-7 h-7 shrink-0 rounded-full mt-0.5 object-cover"
+                  style={{ border: `1.5px solid ${m.color}30` }} />
                 <div className="flex-1 min-w-0">
                   <p className="text-[10px] font-heading font-semibold mb-0.5" style={{ color: m.color }}>{m.name}</p>
                   <div className="px-3 py-2 rounded-xl rounded-tl-sm text-[13px] text-secondary leading-relaxed"
