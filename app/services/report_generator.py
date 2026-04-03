@@ -144,7 +144,7 @@ class ReportGenerator:
         return data
 
     def _system_prompt(self) -> str:
-        return """你是「小蟹研究员」，一个专业的B2B市场调研AI助手。
+        return """你是 CrabRes，一个 AI 增长策略 Agent。
 你的任务是基于监测数据生成结构化的分析报告。
 
 报告要求:

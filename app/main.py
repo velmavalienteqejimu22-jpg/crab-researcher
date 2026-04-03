@@ -1,6 +1,5 @@
 """
 CrabRes - AI Growth Strategy Agent
-(formerly 小蟹研究员)
 """
 
 import logging
