@@ -40,17 +40,13 @@ export function Chat({ creature, onBack }: ChatProps) {
         if (Array.isArray(parsed) && parsed.length > 0) return parsed
       }
     } catch {}
-    return [{
-      id: '0', role: 'assistant' as const,
-      content: "Ready to research. Tell me about your product and growth goals.",
-      timestamp: Date.now(),
-    }]
+    return []  // 空消息列表，首次展示引导卡片
   })
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [activeExpert, setActiveExpert] = useState<string | undefined>(undefined)
   const [sessionId, setSessionId] = useState<string | null>(() => localStorage.getItem(SESSION_KEY))
-  const [showRoundtable, setShowRoundtable] = useState(true)
+  const [showRoundtable, setShowRoundtable] = useState(false)  // 默认隐藏圆桌，不迷惑新用户
   const [showAtMenu, setShowAtMenu] = useState(false)
   const [atFilter, setAtFilter] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -224,6 +220,32 @@ export function Chat({ creature, onBack }: ChatProps) {
 
           {/* 消息区 */}
           <div className="flex-1 overflow-y-auto px-5 py-6 space-y-5">
+
+            {/* ====== 首次引导 ====== */}
+            {messages.length === 0 && !loading && (
+              <div className="flex flex-col items-center justify-center h-full max-w-md mx-auto text-center py-12">
+                <img src={PixImg} alt="CrabRes" className="w-16 h-16 rounded-full object-cover mb-4" />
+                <h2 className="text-lg font-semibold text-primary mb-2">Hi! I'm CrabRes.</h2>
+                <p className="text-sm text-secondary mb-6 leading-relaxed">
+                  Tell me what you're building and I'll research your market, find competitors, and create a growth plan.
+                </p>
+                <div className="w-full space-y-2">
+                  {[
+                    "I'm building an AI resume optimizer at $9.99/mo. Goal: 1000 users in 3 months.",
+                    "I have a habit tracker app. No users yet. Budget is $0.",
+                    "We're launching a B2B SaaS for HR teams. Help me find channels.",
+                  ].map((prompt, i) => (
+                    <button key={i}
+                      onClick={() => { setInput(prompt); inputRef.current?.focus() }}
+                      className="w-full text-left px-4 py-3 rounded-xl border border-border text-sm text-secondary hover:border-brand/30 hover:bg-brand/3 transition-all"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted mt-6">Or just describe your product in your own words.</p>
+              </div>
+            )}
             {messages.map(msg => {
 
               // ── 用户消息：右对齐，简洁 ──

@@ -54,6 +54,12 @@ class BaseExpert(ABC):
         # 所有专家共享的输出质量规则
         enhanced_prompt += """
 
+## RESPONSE LENGTH RULE (CRITICAL)
+- If the user hasn't provided product info yet → ask ONE question to clarify. 2-3 sentences MAX.
+- If the task is a simple greeting or short question → respond briefly. Not everything needs a full analysis.
+- Only produce long analyses when you have real product info AND specific research data.
+- Match your response length to the complexity of the question.
+
 ## OUTPUT QUALITY RULES (MANDATORY)
 
 1. **SPECIFIC DATA POINTS**: Every claim must include at least one specific number, name, or link.
