@@ -10,8 +10,8 @@
  */
 
 import { useState } from 'react'
-import { CreatureRenderer } from '../components/creature/CreatureRenderer'
-import { generateCreature, SPECIES_CONFIG } from '../components/creature/types'
+import PixFrontImg from '../assets/pix_fronted.png'
+// creature types no longer needed for landing
 import { EXPERTS } from '../lib/experts'
 import LogoImg from '../assets/CrabRes-LOGO.png'
 
@@ -22,9 +22,9 @@ interface LandingProps {
 }
 
 export function Landing({ onGetStarted, onLogin, onCompare }: LandingProps) {
-  const creatures = ['crab', 'octopus', 'jellyfish', 'pufferfish', 'seahorse'] as const
-  const heroCreature = generateCreature('hero', 'saas')
-  heroCreature.mood = 'happy'
+
+  // pix images used instead of generated creatures
+  
 
   // 交互式 Demo 状态
   const [demoInput, setDemoInput] = useState('')
@@ -93,7 +93,7 @@ export function Landing({ onGetStarted, onLogin, onCompare }: LandingProps) {
       <section className="text-center px-4 pt-20 pb-24 max-w-2xl mx-auto relative z-10">
         {/* 生物体浮动在标题上方 */}
         <div className="mb-6 animate-float">
-          <CreatureRenderer creature={heroCreature} size={80} />
+          <img src={PixFrontImg} alt="CrabRes" className="w-20 h-20 object-contain" />
         </div>
 
         <h1 className="font-heading text-5xl sm:text-6xl font-bold tracking-tight leading-[1.1] mb-5">
@@ -222,9 +222,9 @@ export function Landing({ onGetStarted, onLogin, onCompare }: LandingProps) {
       <section className="px-4 pb-24 max-w-4xl mx-auto relative z-10">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           {[
-            { icon: '🔍', title: 'Validates first', desc: "Won't waste your time on a bad direction. Tells you the truth — backed by real competitor data." },
-            { icon: '🧠', title: '13 expert minds', desc: 'Economist, psychologist, copywriter, designer — a full growth team debating YOUR strategy.' },
-            { icon: '✍️', title: 'Writes everything', desc: 'Every Reddit post, outreach email, landing page. Copy-paste ready. Not templates — personalized.' },
+            { icon: '◎', title: 'Validates first', desc: "Won't waste your time on a bad direction. Tells you the truth — backed by real competitor data." },
+            { icon: '◉', title: '13 expert minds', desc: 'Economist, psychologist, copywriter, designer — a full growth team debating YOUR strategy.' },
+            { icon: '✦', title: 'Writes everything', desc: 'Every Reddit post, outreach email, landing page. Copy-paste ready. Not templates — personalized.' },
           ].map((f, i) => (
             <div key={i} className="card p-7 text-center group animate-fade-in" style={{ animationDelay: `${i * 0.1}s`, animationFillMode: 'forwards', opacity: 0 }}>
               <div className="text-3xl mb-4">{f.icon}</div>
@@ -307,17 +307,7 @@ export function Landing({ onGetStarted, onLogin, onCompare }: LandingProps) {
           10 unique species. Each reflects your product. It grows as you grow.
         </p>
         <div className="flex flex-wrap justify-center gap-6">
-          {creatures.map((species, i) => {
-            const c = generateCreature(species, 'saas')
-            c.species = species
-            c.mood = 'happy'
-            return (
-              <div key={species} className="flex flex-col items-center gap-2 animate-fade-in" style={{ animationDelay: `${i * 0.1}s`, animationFillMode: 'forwards', opacity: 0 }}>
-                <CreatureRenderer creature={c} size={56} animate={false} />
-                <span className="text-xs text-muted font-heading">{SPECIES_CONFIG[species].displayName}</span>
-              </div>
-            )
-          })}
+          <img src={PixFrontImg} alt="CrabRes" className="w-16 h-16 object-contain" />
         </div>
       </section>
 
@@ -406,7 +396,7 @@ export function Landing({ onGetStarted, onLogin, onCompare }: LandingProps) {
 
       {/* Footer */}
       <footer className="text-center py-8 border-t border-border relative z-10">
-        <p className="text-xs text-muted">🦀 CrabRes · © {new Date().getFullYear()} · Privacy · Terms</p>
+        <p className="text-xs text-muted">CrabRes · © {new Date().getFullYear()} · Privacy · Terms</p>
       </footer>
     </div>
   )

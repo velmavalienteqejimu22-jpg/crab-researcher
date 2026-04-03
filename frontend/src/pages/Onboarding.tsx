@@ -6,7 +6,8 @@
  */
 
 import { useState } from 'react'
-import { CreatureRenderer } from '../components/creature/CreatureRenderer'
+import PixFrontImg from '../assets/pix_fronted.png'
+import PixHappyImg from '../assets/pix_happy.png'
 import { generateCreature, SPECIES_CONFIG } from '../components/creature/types'
 import type { CreatureState } from '../components/creature/types'
 import { api } from '../lib/api'
@@ -21,10 +22,10 @@ const PRODUCT_TYPES = [
   { value: 'tool', label: 'Developer Tool', icon: '🔧' },
   { value: 'ecommerce', label: 'E-commerce', icon: '🛒' },
   { value: 'community', label: 'Community / Social', icon: '👥' },
-  { value: 'content', label: 'Content / Media', icon: '📝' },
+  { value: 'content', label: 'Content / Media', icon: '◉' },
   { value: 'education', label: 'Education', icon: '📚' },
-  { value: 'creative', label: 'Creative / Design', icon: '🎨' },
-  { value: 'finance', label: 'Finance / Fintech', icon: '💰' },
+  { value: 'creative', label: 'Creative / Design', icon: '◎' },
+  { value: 'finance', label: 'Finance / Fintech', icon: '◇' },
   { value: 'game', label: 'Gaming / Entertainment', icon: '🎮' },
   { value: 'other', label: 'Other', icon: '✨' },
 ]
@@ -55,7 +56,7 @@ const MARKETS = [
   { 
     value: 'domestic', 
     label: 'Domestic & Overseas (Money-Maker)', 
-    icon: '💰',
+    icon: '◇',
     desc: '专注变现、出海 (Going Overseas) 和挖掘海外盈利机会。',
     aha: '帮你挖掘海外市场的真实需求，赚到第一个 $1,000。'
   },
@@ -261,7 +262,7 @@ export function Onboarding({ userId, onComplete }: OnboardingProps) {
         {/* Step 3: 目标 */}
         {step === 3 && (
           <div className="text-center">
-            <div className="text-4xl mb-3">🎯</div>
+            <div className="text-2xl mb-3 font-semibold text-brand">◎</div>
             <h2 className="text-xl font-bold text-primary mb-1">
               {market === 'global' ? "What's your growth goal?" : '你的增长目标是？'}
             </h2>
@@ -337,14 +338,14 @@ export function Onboarding({ userId, onComplete }: OnboardingProps) {
             </p>
 
             <div className="mb-4">
-              <CreatureRenderer creature={creature} size={160} />
+              <img src={PixHappyImg} alt="CrabRes" className="w-32 h-32 object-contain" />
             </div>
 
             <div className="mb-6">
-              <p className="text-lg font-bold" style={{ color: SPECIES_CONFIG[creature.species].baseColor }}>
+              <p className="text-lg font-bold" style={{ color: "var(--brand)" }}>
                 {market === 'global' 
-                  ? (creature.species === 'crab' ? 'The Tech Voyager 🎧' : SPECIES_CONFIG[creature.species].displayName)
-                  : (creature.species === 'crab' ? '出海金牌研究员 💰' : SPECIES_CONFIG[creature.species].displayName)}
+                  ? 'Your Growth Companion'
+                  : '你的增长伙伴'}
               </p>
               <p className="text-sm text-muted mt-1 px-4">
                 {market === 'global' 
@@ -356,10 +357,10 @@ export function Onboarding({ userId, onComplete }: OnboardingProps) {
             {/* 专家组装动画 */}
             <div className="space-y-1.5 text-left max-w-xs mx-auto mb-6">
               {[
-                '🔍 Market Researcher', '💰 Economist', '📝 Content Strategist',
-                '🎯 Social Media', '📢 Partnerships', '🤖 AI Distribution',
-                '🧠 Psychologist', '📈 Product Growth', '📊 Data Analyst',
-                '✍️ Copywriter', '🎨 Designer', '⚖️ Critic', '🎖️ Chief Growth Officer',
+                'Market Researcher', 'Economist', 'Content Strategist',
+                'Social Media', 'Partnerships', 'AI Distribution',
+                'Psychologist', 'Product Growth', 'Data Analyst',
+                'Copywriter', 'Designer', 'Critic', 'Chief Growth Officer',
               ].map((expert, i) => (
                 <div key={i} className="flex items-center gap-2 text-xs animate-fade-in"
                   style={{ animationDelay: `${i * 100}ms`, opacity: 0, animationFillMode: 'forwards' }}>

@@ -12,6 +12,7 @@ import { Onboarding } from './pages/Onboarding'
 import { Landing } from './pages/Landing'
 import { Compare } from './pages/Compare'
 import { Settings } from './pages/Settings'
+import PixFrontImg from './assets/pix_fronted.png'
 import { getToken, setToken, clearToken, setAuthExpiredHandler, api } from './lib/api'
 import { generateCreature } from './components/creature/types'
 import type { CreatureState } from './components/creature/types'
@@ -57,7 +58,7 @@ function AuthPage({ onLogin }: { onLogin: () => void }) {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="text-3xl mb-2">🦀</div>
+          <img src={PixFrontImg} alt="CrabRes" className="w-12 h-12 mx-auto mb-2" />
           <h1 className="text-xl font-bold text-primary tracking-tight">CrabRes</h1>
           <p className="text-sm text-muted mt-1">Your AI Growth Partner</p>
         </div>

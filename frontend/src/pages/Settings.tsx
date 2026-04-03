@@ -4,9 +4,9 @@
 
 import { useState } from 'react'
 import { t } from '../lib/i18n'
-import { CreatureRenderer } from '../components/creature/CreatureRenderer'
+import PixFrontImg from '../assets/pix_fronted.png'
 import type { CreatureState } from '../components/creature/types'
-import { SPECIES_CONFIG } from '../components/creature/types'
+
 import { clearToken } from '../lib/api'
 
 interface SettingsProps {
@@ -45,7 +45,7 @@ export function Settings({ creature, onBack, onLogout }: SettingsProps) {
     onLogout()
   }
 
-  const specConfig = SPECIES_CONFIG[creature.species]
+  
 
   return (
     <div className="min-h-screen bg-surface bg-grid bg-noise max-w-lg mx-auto">
@@ -61,10 +61,10 @@ export function Settings({ creature, onBack, onLogout }: SettingsProps) {
         {/* 生物体 + 用户信息 */}
         <div className="card p-6 text-center card-glow animate-fade-in">
           <div className="mb-3 animate-float">
-            <CreatureRenderer creature={creature} size={100} />
+            <img src={PixFrontImg} alt="CrabRes" className="w-20 h-20 object-contain" />
           </div>
-          <h2 className="font-heading font-bold text-lg" style={{ color: specConfig.baseColor }}>
-            {specConfig.displayName}
+          <h2 className="font-heading font-bold text-lg" style={{ color: "var(--brand)" }}>
+            CrabRes
           </h2>
           <p className="text-sm text-muted mt-1">{creature.name || 'Your product'}</p>
           <div className="flex items-center justify-center gap-4 mt-3 text-xs text-muted">
@@ -142,7 +142,7 @@ export function Settings({ creature, onBack, onLogout }: SettingsProps) {
           <div className="card p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg flex items-center justify-center text-lg"
-                style={{ background: specConfig.baseColor + '15', color: specConfig.baseColor }}>
+                style={{ background: "var(--brand-light)", color: "var(--brand)" }}>
                 {creature.name?.[0]?.toUpperCase() || '🦀'}
               </div>
               <div className="flex-1">
