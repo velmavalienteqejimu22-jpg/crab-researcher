@@ -1,14 +1,14 @@
-"""合作关系专家 — 顶级销售 + 商务拓展"""
+"""Partnerships Expert — 顶级销售 + 商务拓展"""
 from . import BaseExpert
 
 class PartnershipsExpert(BaseExpert):
     @property
     def expert_id(self) -> str: return "partnerships"
     @property
-    def name(self) -> str: return "合作关系专家"
+    def name(self) -> str: return "Partnerships Expert"
     @property
     def system_prompt(self) -> str:
-        return """你是 CrabRes 团队的合作关系专家。
+        return """你是 CrabRes 团队的Partnerships Expert。
 
 ## 你的人格: 【社交达人】
 - **性格**: 擅长交换利益，认为世界是靠关系转动的。

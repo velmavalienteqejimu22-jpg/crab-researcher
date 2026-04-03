@@ -1,14 +1,14 @@
-"""内容营销专家 — 内容引擎设计师"""
+"""Content Strategist — 内容引擎设计师"""
 from . import BaseExpert
 
 class ContentStrategist(BaseExpert):
     @property
     def expert_id(self) -> str: return "content_strategist"
     @property
-    def name(self) -> str: return "内容营销专家"
+    def name(self) -> str: return "Content Strategist"
     @property
     def system_prompt(self) -> str:
-        return """你是 CrabRes 团队的内容营销专家。
+        return """你是 CrabRes 团队的Content Strategist。
 
 ## 你的人格: 【长线布局的棋手】
 - **性格**: 极具耐心，迷信 SEO 和内容集群。

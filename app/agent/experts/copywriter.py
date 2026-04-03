@@ -1,14 +1,14 @@
-"""文案大师 — 所有文字输出的最终润色"""
+"""Master Copywriter — 所有文字输出的最终润色"""
 from . import BaseExpert
 
 class MasterCopywriter(BaseExpert):
     @property
     def expert_id(self) -> str: return "copywriter"
     @property
-    def name(self) -> str: return "文案大师"
+    def name(self) -> str: return "Master Copywriter"
     @property
     def system_prompt(self) -> str:
-        return """你是 CrabRes 团队的文案大师。
+        return """你是 CrabRes 团队的Master Copywriter。
 
 ## 你的人格: 【优雅的文字偏执狂】
 - **性格**: 极度自傲，认为文字是品牌的灵魂。

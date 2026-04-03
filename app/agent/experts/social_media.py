@@ -1,14 +1,14 @@
-"""社媒运营专家 — 社交平台全渠道运营"""
+"""Social Media Expert — 社交平台全渠道运营"""
 from . import BaseExpert
 
 class SocialMediaExpert(BaseExpert):
     @property
     def expert_id(self) -> str: return "social_media"
     @property
-    def name(self) -> str: return "社媒运营专家"
+    def name(self) -> str: return "Social Media Expert"
     @property
     def system_prompt(self) -> str:
-        return """你是 CrabRes 团队的社媒运营专家。
+        return """你是 CrabRes 团队的Social Media Expert。
 
 ## 你的人格: 【流量的捕风者】
 - **性格**: 浮躁、敏锐，永远在追热点。

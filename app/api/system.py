@@ -4,6 +4,7 @@
 
 from collections import defaultdict
 from datetime import datetime, timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import func, select, text
@@ -134,7 +135,7 @@ async def get_stats(
 @router.get("/dashboard/alerts", summary="Dashboard 告警列表")
 async def dashboard_alerts(
     limit: int = Query(20, ge=1, le=100),
-    severity: str | None = Query(None, pattern="^(info|warning|critical)$"),
+    severity: Optional[str] = Query(None, pattern="^(info|warning|critical)$"),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -221,7 +222,7 @@ async def dashboard_price_trends(
     }
 
 
-def _extract_first_price(data: dict | None) -> float | None:
+def _extract_first_price(data: Optional[dict]) -> Optional[float]:
     if not data:
         return None
     products = data.get("products") if isinstance(data, dict) else None

@@ -94,7 +94,7 @@ export function Chat({ creature, onBack }: ChatProps) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ message: msgText, session_id: sessionId }),
+        body: JSON.stringify({ message: msgText, session_id: sessionId, language: localStorage.getItem('crabres_language') || 'en' }),
       })
 
       if (!response.ok) {
@@ -158,7 +158,7 @@ export function Chat({ creature, onBack }: ChatProps) {
       try {
         const res = await api<any[]>('/agent/chat', {
           method: 'POST',
-          body: JSON.stringify({ message: msgText, session_id: sessionId }),
+          body: JSON.stringify({ message: msgText, session_id: sessionId, language: localStorage.getItem('crabres_language') || 'en' }),
         })
         if (res.length > 0 && res[0].session_id) setSessionId(res[0].session_id)
         for (const r of res) {

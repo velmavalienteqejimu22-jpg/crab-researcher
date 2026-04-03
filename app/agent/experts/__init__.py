@@ -27,18 +27,26 @@ class BaseExpert(ABC):
         ...
 
     async def analyze(self, context: dict, task: str) -> str:
-        """执行分析任务，调用 LLM，自动注入专业知识库"""
+        """
+        执行分析任务，调用 LLM
+        
+        升级：
+        1. 选择性知识注入（不全量 580 行，只注入任务相关的渠道知识）
+        2. 上下文隔离（每个专家只看到自己需要的 context 片段）
+        3. Prompt Cache（同 session 内相同知识不重复发送）
+        """
         if not self._llm:
             return f"[{self.name}] LLM 未初始化"
 
         from app.agent.engine.llm_adapter import TaskTier
-        from app.agent.knowledge.skills_registry import get_expert_knowledge
+        from app.agent.engine.context_engine import get_selective_knowledge, build_expert_context
         import json
 
-        # 获取该专家的专业知识库
-        knowledge = get_expert_knowledge(self.expert_id)
+        # 🔥 选择性知识注入（根据任务内容只注入相关渠道知识）
+        user_message = context.get("user_message", "")
+        knowledge = get_selective_knowledge(self.expert_id, task, user_message)
 
-        # 构建增强版 system prompt = 专家基础 prompt + 专业知识 + 输出质量规则
+        # 构建增强版 system prompt = 专家基础 prompt + 选择性知识 + 输出质量规则
         enhanced_prompt = self.system_prompt
         if knowledge:
             enhanced_prompt += "\n" + knowledge
@@ -60,18 +68,28 @@ class BaseExpert(ABC):
 
 4. **ONE CONTRARIAN TAKE**: Include one thing that goes against conventional wisdom or challenges the other experts' views. You are not here to agree — you are here to sharpen the strategy through debate."""
 
-        # 构建任务消息
-        product_info = context.get("product", {})
-        expert_outputs = context.get("expert_outputs", {})
+        # 🔥 上下文隔离：专家只看到自己需要的 context
+        isolated_ctx = build_expert_context(self.expert_id, context, task)
+        product_info = isolated_ctx.get("product", {})
+        expert_outputs = isolated_ctx.get("expert_outputs", {})
 
-        user_content = f"""## 任务
+        # 注入相关的工具搜索结果摘要（如果有）
+        tool_results_text = ""
+        for r in isolated_ctx.get("tool_results", [])[:3]:
+            result_str = json.dumps(r.get("result", {}), ensure_ascii=False, default=str)[:400]
+            tool_results_text += f"- [{r.get('tool', '')}]: {result_str}\n"
+
+        user_content = f"""## Task
 {task}
 
-## 产品信息
-{json.dumps(product_info, ensure_ascii=False, default=str) if product_info else "暂无，需要向用户询问"}
+## Product Info
+{json.dumps(product_info, ensure_ascii=False, default=str) if product_info else "Not yet provided"}
 
-## 其他专家已有的分析
-{json.dumps(expert_outputs, ensure_ascii=False, default=str)[:1000] if expert_outputs else "暂无"}
+## Research Data Available
+{tool_results_text if tool_results_text else "No research data yet"}
+
+## Other Experts' Views (challenge or build on these)
+{json.dumps(expert_outputs, ensure_ascii=False, default=str)[:1000] if expert_outputs else "None yet"}
 """
         response = await self._llm.generate(
             system_prompt=enhanced_prompt,

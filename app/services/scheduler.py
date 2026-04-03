@@ -8,6 +8,7 @@
   - 丰富的飞书卡片通知
 """
 
+from typing import Optional
 import logging
 from collections import deque
 from datetime import datetime, timedelta
@@ -34,10 +35,10 @@ class MonitoringScheduler:
         self._running = False
 
         # 运行态指标
-        self.started_at: datetime | None = None
-        self.last_run_at: datetime | None = None
-        self.last_success_at: datetime | None = None
-        self.last_error: str | None = None
+        self.started_at: Optional[datetime] = None
+        self.last_run_at: Optional[datetime] = None
+        self.last_success_at: Optional[datetime] = None
+        self.last_error: Optional[str] = None
         self.total_runs = 0
         self.total_failures = 0
         self.total_tasks_processed = 0
@@ -294,5 +295,5 @@ class MonitoringScheduler:
         }.get(task_type.lower(), "监测告警")
 
     @staticmethod
-    def _to_iso(dt: datetime | None) -> str | None:
+    def _to_iso(dt: Optional[datetime]) -> Optional[str]:
         return dt.isoformat() if dt else None

@@ -1,11 +1,13 @@
 """
 CrabRes Memory System
 
-学习自 Claude Code 的四层记忆架构：
+学习自 Claude Code 的多层记忆架构：
+
 Layer 1: Growth Config（最高优先级，用户配置）
 Layer 2: Auto Memory（自动记忆，分类存储）
 Layer 3: Session Memory（会话记忆，每次对话摘要）
-Layer 4: Growth Dream（后台整理，消除矛盾）
+Layer 4: Growth Dream（后台整理，消除矛盾、去重、合并）
+Layer 5: External Knowledge（外部引用知识，独立存储+触发条件+版本管理）
 
 记忆分类（学 Claude Code 的 memdir/）：
 - product/    产品 DNA
@@ -15,11 +17,13 @@ Layer 4: Growth Dream（后台整理，消除矛盾）
 - execution/  执行效果（KPI/什么有效/什么无效）
 - feedback/   用户修正（偏好/约束/否决）
 - journal/    增长日志（每日追加）
+- knowledge/  外部知识引用（平台规则/行业数据/框架模板）
 """
 
 import json
 import os
 import time
+import hashlib
 import logging
 from pathlib import Path
 from typing import Any, Optional
@@ -30,7 +34,10 @@ logger = logging.getLogger(__name__)
 class GrowthMemory:
     """CrabRes 记忆系统"""
 
-    CATEGORIES = ["product", "goals", "research", "strategy", "execution", "feedback", "journal"]
+    CATEGORIES = [
+        "product", "goals", "research", "strategy",
+        "execution", "feedback", "journal", "knowledge",
+    ]
 
     def __init__(self, base_dir: str = ".crabres/memory"):
         self.base_dir = Path(base_dir)
@@ -41,10 +48,35 @@ class GrowthMemory:
             (self.base_dir / cat).mkdir(parents=True, exist_ok=True)
 
     async def save(self, key: str, data: Any, category: str = "product"):
-        """保存记忆"""
+        """
+        保存记忆（带版本追踪）
+        
+        自动记录版本号和更新时间，用于 Dream 去重和知识新鲜度判断。
+        """
         path = self.base_dir / category / f"{key}.json"
+        
+        # 版本追踪：如果文件已存在，递增版本号
+        version = 1
+        old_data = None
+        if path.exists():
+            try:
+                old_data = json.loads(path.read_text())
+                if isinstance(old_data, dict):
+                    version = old_data.get("_version", 0) + 1
+            except Exception:
+                pass
+        
+        # 如果 data 是 dict，注入元数据
+        if isinstance(data, dict):
+            data["_version"] = version
+            data["_updated_at"] = time.time()
+            # 内容 hash 用于 Dream 去重
+            content_str = json.dumps({k: v for k, v in data.items() if not k.startswith("_")}, 
+                                     ensure_ascii=False, default=str)
+            data["_content_hash"] = hashlib.md5(content_str.encode()).hexdigest()[:12]
+        
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str))
-        logger.debug(f"Memory saved: {category}/{key}")
+        logger.debug(f"Memory saved: {category}/{key} (v{version})")
 
     async def load(self, key: str, category: str = "product") -> Optional[Any]:
         """加载记忆"""
@@ -55,6 +87,75 @@ class GrowthMemory:
             return json.loads(path.read_text())
         except Exception:
             return None
+
+    async def save_knowledge(self, key: str, content: str, source: str,
+                             trigger: str = "", expires_days: int = 0):
+        """
+        保存外部知识引用（独立于专家知识库的动态知识）
+        
+        用途：
+        - 用户分享的实操经验（小红书/公众号运营心得）
+        - 调研获取的最新平台规则
+        - 行业基准数据
+        
+        Args:
+            key: 知识标识（如 "xiaohongshu_2026_rules"）
+            content: 知识内容
+            source: 来源标注
+            trigger: 触发条件（什么场景下注入，如 "task contains 小红书"）
+            expires_days: 过期天数（0=不过期）
+        """
+        data = {
+            "content": content,
+            "source": source,
+            "trigger": trigger,
+            "created_at": time.time(),
+            "expires_at": time.time() + expires_days * 86400 if expires_days > 0 else 0,
+        }
+        await self.save(key, data, category="knowledge")
+        logger.info(f"Knowledge saved: {key} ({len(content)} chars, source={source})")
+
+    async def get_triggered_knowledge(self, task: str) -> list[dict]:
+        """
+        获取与当前任务匹配的外部知识
+        
+        遍历 knowledge/ 目录，检查 trigger 条件是否匹配。
+        """
+        knowledge_dir = self.base_dir / "knowledge"
+        if not knowledge_dir.exists():
+            return []
+        
+        results = []
+        task_lower = task.lower()
+        now = time.time()
+        
+        for path in knowledge_dir.glob("*.json"):
+            try:
+                data = json.loads(path.read_text())
+                # 检查过期
+                expires_at = data.get("expires_at", 0)
+                if expires_at > 0 and now > expires_at:
+                    continue
+                
+                # 检查触发条件
+                trigger = data.get("trigger", "")
+                if trigger:
+                    # trigger 格式："task contains 小红书" 或 "always"
+                    if trigger == "always":
+                        results.append(data)
+                    elif "contains" in trigger:
+                        keyword = trigger.split("contains")[-1].strip()
+                        if keyword.lower() in task_lower:
+                            results.append(data)
+                else:
+                    # 无触发条件 = 关键词匹配
+                    key_stem = path.stem.replace("_", " ")
+                    if any(word in task_lower for word in key_stem.split() if len(word) > 2):
+                        results.append(data)
+            except Exception:
+                continue
+        
+        return results
 
     async def append_journal(self, entry: dict):
         """追加增长日志（学 Claude Code 的 Write-Ahead Log）"""
@@ -93,3 +194,24 @@ class GrowthMemory:
                 except Exception:
                     continue
         return results
+
+    async def get_memory_stats(self) -> dict:
+        """获取记忆系统统计（供 Dream 和 Metrics 使用）"""
+        stats = {}
+        total_size = 0
+        for cat in self.CATEGORIES:
+            cat_dir = self.base_dir / cat
+            if not cat_dir.exists():
+                stats[cat] = {"count": 0, "size_bytes": 0}
+                continue
+            files = list(cat_dir.glob("*.json")) + list(cat_dir.glob("*.jsonl"))
+            size = sum(f.stat().st_size for f in files)
+            stats[cat] = {"count": len(files), "size_bytes": size}
+            total_size += size
+        return {
+            "categories": stats,
+            "total_files": sum(s["count"] for s in stats.values()),
+            "total_size_bytes": total_size,
+            "total_size_mb": round(total_size / 1024 / 1024, 2),
+        }
+

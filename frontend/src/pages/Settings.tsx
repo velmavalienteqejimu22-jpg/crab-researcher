@@ -16,6 +16,7 @@ interface SettingsProps {
 
 export function Settings({ creature, onBack, onLogout }: SettingsProps) {
   const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
+  const [language, setLanguage] = useState(() => localStorage.getItem('crabres_language') || 'en')
   const [notifications, setNotifications] = useState({
     email: true,
     discord: false,
@@ -77,7 +78,7 @@ export function Settings({ creature, onBack, onLogout }: SettingsProps) {
         {/* 外观 */}
         <section className="animate-fade-in" style={{ animationDelay: '0.1s', opacity: 0 }}>
           <h3 className="font-heading font-semibold text-sm text-muted uppercase tracking-wider mb-3">Appearance</h3>
-          <div className="card overflow-hidden">
+          <div className="card overflow-hidden divide-y divide-[var(--border-default)]">
             <div className="flex items-center justify-between p-4">
               <div>
                 <p className="text-sm font-medium text-primary">Dark mode</p>
@@ -87,6 +88,24 @@ export function Settings({ creature, onBack, onLogout }: SettingsProps) {
                 className={`w-12 h-7 rounded-full transition-colors relative ${dark ? 'bg-brand' : 'bg-gray-200'}`}>
                 <div className={`w-5 h-5 rounded-full bg-white shadow-md absolute top-1 transition-transform ${dark ? 'translate-x-6' : 'translate-x-1'}`} />
               </button>
+            </div>
+            <div className="flex items-center justify-between p-4">
+              <div>
+                <p className="text-sm font-medium text-primary">Language</p>
+                <p className="text-xs text-muted">Agent responses & UI language</p>
+              </div>
+              <div className="flex gap-1 p-0.5 rounded-lg bg-[var(--bg-subtle)]">
+                <button
+                  onClick={() => { setLanguage('en'); localStorage.setItem('crabres_language', 'en') }}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${language === 'en' ? 'bg-white shadow-sm text-primary dark:bg-[var(--bg-card)]' : 'text-muted'}`}>
+                  English
+                </button>
+                <button
+                  onClick={() => { setLanguage('zh'); localStorage.setItem('crabres_language', 'zh') }}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${language === 'zh' ? 'bg-white shadow-sm text-primary dark:bg-[var(--bg-card)]' : 'text-muted'}`}>
+                  中文
+                </button>
+              </div>
             </div>
           </div>
         </section>

@@ -101,6 +101,7 @@ def _get_or_create_experts() -> ExpertPool:
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
+    language: str = "en"  # "en" or "zh" — from frontend Settings
 
 
 class ChatResponse(BaseModel):
@@ -142,7 +143,7 @@ async def agent_chat(
     _session_last_active[session_id] = __import__('time').time()
 
     outputs: list[ChatResponse] = []
-    async for event in loop.run(req.message):
+    async for event in loop.run(req.message, language=req.language):
         outputs.append(ChatResponse(
             session_id=session_id,
             type=event.get("type", "message"),
@@ -197,7 +198,7 @@ async def agent_chat_stream(
 
     async def event_generator():
         try:
-            async for event in loop.run(req.message):
+            async for event in loop.run(req.message, language=req.language):
                 data = json.dumps({
                     "session_id": session_id,
                     "type": event.get("type", "message"),

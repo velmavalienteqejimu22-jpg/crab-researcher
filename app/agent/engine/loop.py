@@ -87,7 +87,7 @@ class AgentLoop:
         self._running = False
         self._max_consecutive_errors = 3
         self._error_count = 0
-        self._max_loop_iterations = 15
+        self._max_loop_iterations = 10
         self._message_history: list[dict] = []
 
         # Agent workspace 沙箱 — Agent 的"工作区"
@@ -101,16 +101,28 @@ class AgentLoop:
         from app.agent.trust import TrustManager
         self.trust = TrustManager(memory)
 
-    async def run(self, user_message: str):
+        # Mood Sensing — 情绪感知
+        from app.agent.engine.mood_sensing import MoodSensor
+        self.mood_sensor = MoodSensor()
+
+        # Deep Strategy — ULTRAPLAN 异步深度策略
+        from app.agent.engine.deep_strategy import get_deep_strategy_engine
+        self.deep_strategy = get_deep_strategy_engine()
+
+        # Prompt Cache — 上下文复用缓存
+        from app.agent.engine.prompt_cache import PromptCache
+        self.prompt_cache = PromptCache()
+
+    async def run(self, user_message: str, language: str = "en"):
         """
         处理一条用户消息，yield 流式输出
         
-        这是整个系统的心跳。
-        while(not_done): think → act → observe
-        
-        支持 @expert_id 私聊：用户可以 @economist 或 @psychologist 直接和专家对话
+        Args:
+            user_message: 用户消息
+            language: 用户选择的语言 ("en" 或 "zh")，从前端 Settings 传入
         """
         self._running = True
+        self._language = language  # 存储供后续方法使用
         self.state.turn_count += 1
         self.state.last_active_at = time.time()
         self.state.is_waiting_for_user = False
@@ -150,6 +162,49 @@ class AgentLoop:
         await self.trust.record_session()
         trust_permissions = await self.trust.get_permissions()
 
+        # 🧠 Deep Strategy 触发检测（ULTRAPLAN）
+        from app.agent.engine.deep_strategy import should_trigger_deep_strategy
+        if should_trigger_deep_strategy(user_message):
+            yield {"type": "status", "content": "Initiating Deep Strategy session (background)..."}
+            try:
+                job = await self.deep_strategy.create_job(
+                    user_id=str(self.memory.base_dir).split("/")[-1],
+                    session_id=self.state.session_id,
+                    request=user_message,
+                    llm_service=self.llm,
+                    tool_registry=self.tools,
+                    expert_pool=self.experts,
+                    memory=self.memory,
+                )
+                yield {
+                    "type": "message",
+                    "content": (
+                        f"🔬 **Deep Strategy Session launched** (ID: `{job.id}`)\n\n"
+                        f"This is a complex request that requires thorough research. "
+                        f"I'm running a full expert roundtable in the background with 8 specialists.\n\n"
+                        f"**What's happening:**\n"
+                        f"1. Deep market research (5-8 search queries)\n"
+                        f"2. Full expert roundtable (8 experts analyzing in parallel)\n"
+                        f"3. CGO synthesizing final comprehensive strategy\n\n"
+                        f"This will take 2-5 minutes. I'll notify you when it's ready.\n"
+                        f"In the meantime, feel free to ask me anything else!"
+                    ),
+                }
+                self._message_history.append({"role": "user", "content": user_message})
+                self._message_history.append({"role": "assistant", "content": f"[Deep Strategy launched: {job.id}]"})
+                await self._persist_state()
+                return
+            except Exception as e:
+                logger.error(f"Deep Strategy failed to launch: {e}")
+                yield {"type": "status", "content": "Deep strategy unavailable, proceeding normally..."}
+
+        # 🎭 Mood Sensing — 情绪感知
+        mood_signal = self.mood_sensor.detect(user_message)
+        mood_injection = ""
+        if mood_signal:
+            mood_injection = self.mood_sensor.get_prompt_injection(mood_signal)
+            logger.info(f"Mood sensing: {mood_signal.mood.value} (confidence={mood_signal.confidence:.2f})")
+
         # 如果是新启动的会话（或进程重启），尝试从磁盘加载历史
         if not self._message_history:
             await self._load_state()
@@ -166,17 +221,63 @@ class AgentLoop:
         # 加载记忆上下文
         context = await self._build_context(user_message)
         context["trust"] = trust_permissions
+        context["mood_injection"] = mood_injection  # 情绪感知注入
 
         iteration = 0
+        tool_call_count = 0  # 追踪工具调用次数
+        
         while self._running and iteration < self._max_loop_iterations:
             iteration += 1
             try:
+                # 🔥 强制停止搜索：如果已经做了 3+ 轮工具调用，注入强制指令
+                if tool_call_count >= 3:
+                    tool_results = context.get("tool_results", [])
+                    num_results = len(tool_results)
+                    force_msg = {
+                        "role": "user",
+                        "content": (
+                            f"[SYSTEM OVERRIDE] You have completed {tool_call_count} research rounds "
+                            f"and collected {num_results} data points. STOP SEARCHING. "
+                            f"You MUST now either: (1) call consult_roundtable with 3-4 experts to analyze the data, "
+                            f"or (2) call output with your final strategy. "
+                            f"Do NOT call any more search tools. Research phase is OVER."
+                        ),
+                    }
+                    # 注入到 context messages 的末尾
+                    msgs = context.get("messages", [])
+                    if not any("[SYSTEM OVERRIDE]" in m.get("content", "") for m in msgs):
+                        msgs.append(force_msg)
+                        context["messages"] = msgs
+                        logger.info(f"Injected SYSTEM OVERRIDE: {tool_call_count} tool calls done, forcing output")
+
                 # 1. THINK: 让 Coordinator（首席增长官）决定下一步
                 yield {"type": "status", "content": "Coordinator deciding next tactical move..."}
                 decision = await self._think(context)
 
                 if decision.type == ActionType.OUTPUT:
                     content = decision.content
+
+                    # 🔥 强制圆桌检查：如果做了研究但跳过了专家讨论，强制触发一轮圆桌
+                    tool_results = context.get("tool_results", [])
+                    has_research = len(tool_results) >= 2
+                    has_experts = len(self.state.expert_outputs) > 0
+                    if has_research and not has_experts and iteration < self._max_loop_iterations - 2:
+                        logger.info("Forcing roundtable: research done but no experts consulted")
+                        yield {"type": "status", "content": "Assembling expert roundtable for analysis..."}
+                        # 🔥 Harness：根据产品类型智能选择专家
+                        from app.agent.engine.context_engine import select_roundtable_experts
+                        product_type = context.get("product", {}).get("type", "default")
+                        expert_ids = select_roundtable_experts(product_type, context.get("user_message", ""))
+                        task = f"Analyze this product and create a growth strategy based on the research data. Product: {context.get('user_message', '')}. Research results available in context."
+                        async for evt in self._run_roundtable(expert_ids, task, context):
+                            if evt.get("type") == "expert_thinking":
+                                eid = evt.get("expert_id", "")
+                                self.state.expert_outputs[eid] = evt.get("content", "")
+                                context.setdefault("expert_outputs", {})[eid] = evt.get("content", "")
+                            yield evt
+                        # 圆桌会输出自己的 message，不需要再输出 Coordinator 的
+                        break
+
                     # 自动 Critic 审核（如果输出足够长且是策略内容）
                     if len(content) > 500 and self.state.turn_count >= 2:
                         critic = self.experts.get("critic")
@@ -229,6 +330,8 @@ class AgentLoop:
                             "role": "assistant",
                             "content": f"[Tool: {decision.tool_name}] Result: {result_summary}",
                         })
+                    
+                    tool_call_count += 1
 
                 elif decision.type == ActionType.EXPERT:
                     # 调度专家 — 增加模拟"思考片段"让前端可视化更真实
@@ -305,6 +408,51 @@ class AgentLoop:
                 # 尝试恢复（学 Claude Code 的 3 级恢复）
                 context = await self._try_recover(context, e)
 
+        # 🔥 Fallback: 如果循环用完了但有搜索数据，强制输出
+        tool_results = context.get("tool_results", [])
+        has_output = any(
+            a.type == ActionType.OUTPUT for a in self.state.actions_history
+        ) or any(
+            a.type == ActionType.ROUNDTABLE for a in self.state.actions_history
+        )
+        
+        if not has_output and len(tool_results) >= 1:
+            logger.info(f"Loop exhausted with {len(tool_results)} tool results but no output. Forcing roundtable fallback.")
+            yield {"type": "status", "content": "Finalizing analysis with expert roundtable..."}
+            
+            from app.agent.engine.context_engine import select_roundtable_experts
+            product_type = context.get("product", {}).get("type", "default")
+            expert_ids = select_roundtable_experts(product_type, context.get("user_message", ""))
+            user_msg = context.get("user_message", "")
+            task = (
+                f"Analyze this product and create a growth strategy. "
+                f"Product: {user_msg}. "
+                f"We have collected {len(tool_results)} research data points. "
+                f"Synthesize the research into actionable Playbooks."
+            )
+            
+            try:
+                async for evt in self._run_roundtable(expert_ids, task, context):
+                    if evt.get("type") == "expert_thinking":
+                        eid = evt.get("expert_id", "")
+                        self.state.expert_outputs[eid] = evt.get("content", "")
+                    yield evt
+            except Exception as e:
+                logger.error(f"Fallback roundtable failed: {e}")
+                # 如果圆桌也失败了，直接用搜索数据生成一个基础输出
+                research_summary = "\n".join(
+                    f"- {json.dumps(r, ensure_ascii=False, default=str)[:300]}" 
+                    for r in tool_results[:5]
+                )
+                yield {
+                    "type": "message",
+                    "content": (
+                        f"Based on my research:\n\n{research_summary}\n\n"
+                        f"I encountered an issue assembling the full expert analysis. "
+                        f"Please try again or ask a more specific question."
+                    ),
+                }
+
         # 持久化状态
         await self._persist_state()
 
@@ -345,14 +493,15 @@ class AgentLoop:
         auto_research = trust.get("auto_research", False)
         auto_post = trust.get("auto_post", False)
 
+        lang = getattr(self, '_language', 'en')
+        lang_rule = "English" if lang == "en" else "Chinese (中文)"
+
         return f"""You are CrabRes's Chief Growth Officer (CGO) — a world-class growth strategist.
 
 ## CRITICAL LANGUAGE RULE
-**ALWAYS respond in the SAME language as the user's message.**
-- If user writes in English → respond ONLY in English.
-- If user writes in Chinese → respond ONLY in Chinese.
-- NEVER mix languages. NEVER respond in Thai, Korean, Japanese, or any other language the user did not use.
-- When in doubt, default to English.
+**You MUST respond ONLY in {lang_rule}.** No exceptions. No mixing languages.
+- ALL expert names, status messages, and analysis must be in {lang_rule}.
+- If the user's message is in a different language, still respond in {lang_rule}.
 
 ## TRUST LEVEL: {trust_level_name}
 {"- You CAN auto-execute research without asking." if auto_research else "- Ask user before executing any strategy."}
@@ -445,6 +594,12 @@ If this is the user's first message about their product:
 
 4. **SPECIFICITY TEST**: Before outputting, ask yourself: "Could I swap this product's name with any other product and the advice would still make sense?" If yes → too generic → rewrite with specifics.
 
+5. **CITE RESEARCH RESULTS**: You MUST reference specific findings from your tool calls in your output.
+   BAD: "Based on my research, the market is competitive."
+   GOOD: "Search results show 3 direct competitors: Rezi ($29/mo, 890K monthly visits), Kickresume (freemium, 2.1M visits), Zety ($24.99/mo, 4.8M visits). Reddit r/resumes (850K members) has 12 recent threads asking for AI resume tools."
+   
+   If you used web_search or social_search, their results MUST appear in your output. Don't just say "I researched" — show the data.
+
 5. **PLAYBOOK FORMAT**: When presenting a growth strategy, structure it as executable Playbooks:
    - Each growth path = 1 Playbook (e.g., "小红书达人种草", "Reddit Community Growth", "X Build in Public")
    - Each Playbook has Phases (准备期 → 执行期 → 追踪期)
@@ -454,6 +609,8 @@ If this is the user's first message about their product:
    - This is NOT a suggestion list. This is an execution manual.
 
 6. **CHANNEL DEPTH**: For X/Twitter, 小红书, and Reddit — give Playbook-level SOPs with platform-specific knowledge (algorithm rules, content formats, timing, anti-ban). For other channels — give directional advice + "whether it fits" judgment + first step.
+
+{context.get('mood_injection', '')}
 
 The user came here because they're tired of generic advice. Show them what real research looks like."""
 
@@ -518,24 +675,33 @@ The user came here because they're tired of generic advice. Show them what real 
 
     async def _run_roundtable(self, expert_ids: list[str], task: str, context: dict):
         """
-        圆桌模式：并行调度多个专家 → 每个完成后立即 yield → 最后综合
+        圆桌模式：按依赖关系分批调度专家 → 后批能看到前批结果 → CGO 综合
         
-        这是 CrabRes 的核心体验差异化。
-        用户能看到多个专家各自独立分析、互相补充/冲突，最后由 CGO 综合。
+        升级：使用 Harness 的 EXPERT_DEPENDENCIES 做分批执行
+        - 第一批：无依赖的专家并行
+        - 第二批：依赖第一批的专家并行（能看到第一批结果）
+        - 最后：CGO 综合所有输出
         """
         from app.agent.engine.llm_adapter import TaskTier
+        from app.agent.engine.context_engine import get_expert_execution_order
 
-        # 1. 为每个专家创建分析任务
+        # 1. 计算分批执行顺序
+        batches = get_expert_execution_order(expert_ids)
+        logger.info(f"Roundtable execution order: {batches}")
+
+        expert_results: dict[str, str] = {}
+
+        # 2. 为每个专家创建分析任务
         async def _consult_one(eid: str) -> tuple[str, str]:
             expert = self.experts.get(eid)
             if not expert:
                 return eid, f"Expert {eid} not available"
             try:
-                # 注入已有其他专家的观点（如果有），鼓励冲突
+                # 注入已有其他专家的观点（前批结果），鼓励冲突
                 other_views = {k: v[:300] for k, v in self.state.expert_outputs.items() if k != eid}
                 enriched_task = task
                 if other_views:
-                    enriched_task += f"\n\n## Other experts' preliminary views (challenge or build on these):\n"
+                    enriched_task += f"\n\n## Other experts' views (challenge or build on these):\n"
                     for ok, ov in other_views.items():
                         enriched_task += f"- {ok}: {ov}\n"
                 
@@ -549,21 +715,24 @@ The user came here because they're tired of generic advice. Show them what real 
             except Exception as e:
                 return eid, f"[{expert.name if expert else eid}] Error: {str(e)[:100]}"
 
-        # 2. 并行启动所有专家
-        tasks_list = [_consult_one(eid) for eid in expert_ids]
-        expert_results: dict[str, str] = {}
+        # 3. 按批次执行：同批并行，批间串行（后批能看到前批结果）
+        for batch_idx, batch in enumerate(batches):
+            if batch_idx > 0:
+                yield {"type": "status", "content": f"Round {batch_idx + 1}: {len(batch)} experts analyzing with prior insights..."}
 
-        # 3. 使用 as_completed 让每个专家完成后立即 yield
-        for coro in asyncio.as_completed(tasks_list):
-            eid, result = await coro
-            expert_results[eid] = result
-            expert = self.experts.get(eid)
-            expert_name = expert.name if expert else eid
+            tasks_list = [_consult_one(eid) for eid in batch]
+            
+            for coro in asyncio.as_completed(tasks_list):
+                eid, result = await coro
+                expert_results[eid] = result
+                # 写入 state 让下一批专家能看到
+                self.state.expert_outputs[eid] = result
+                context.setdefault("expert_outputs", {})[eid] = result
 
-            # 先发一个"正在分析"的状态
-            yield {"type": "expert_thinking", "expert_id": eid, "content": f"{expert_name} is analyzing..."}
-            # 再发真正的分析结果
-            yield {"type": "expert_thinking", "expert_id": eid, "content": result}
+                expert = self.experts.get(eid)
+                expert_name = expert.name if expert else eid
+                yield {"type": "expert_thinking", "expert_id": eid, "content": f"{expert_name} is analyzing..."}
+                yield {"type": "expert_thinking", "expert_id": eid, "content": result}
 
         # 4. 所有专家完成后，Coordinator 综合
         yield {"type": "status", "content": "CGO synthesizing expert insights..."}
@@ -588,22 +757,47 @@ The user came here because they're tired of generic advice. Show them what real 
             name = expert.name if expert else eid
             expert_summary += f"\n### {name} ({eid}):\n{output[:1500]}\n"
 
+        lang = getattr(self, '_language', 'en')
+        lang_rule = "English" if lang == "en" else "Chinese (中文)"
+
         synthesis_prompt = f"""You are CrabRes's Chief Growth Officer. You just held a roundtable with {len(expert_results)} experts.
 
 ## CRITICAL LANGUAGE RULE
-**ALWAYS respond in the SAME language as the original user message in the conversation.**
-- If user wrote in English → respond ONLY in English.
-- If user wrote in Chinese → respond ONLY in Chinese.
+**You MUST respond ONLY in {lang_rule}.** No exceptions.
 
-## Your task
-Synthesize the expert findings into ONE clear, actionable response for the user.
+## ROUNDTABLE THREE-PHASE STRUCTURE (follow this order)
 
-## Rules
-1. **Highlight disagreements**: If experts disagree, explain the tension and your decision.
-2. **Be specific**: Use data, names, and links from the expert outputs. No vague advice.
-3. **Cite experts**: Reference which expert said what (e.g., "Our Market Researcher found that...")
-4. **Action items**: End with 2-3 concrete next steps the user can execute today.
-5. **Don't just summarize**: Add your own CGO judgment on what matters most.
+### Phase 1: Market Intelligence (数据先行)
+- Open with 2-3 SPECIFIC data points from the research (competitor names, traffic numbers, pricing).
+- Cite which expert found what. Example: "Our Market Researcher found Teal.com gets 4.8M monthly visits..."
+
+### Phase 2: Expert Debate (专家争论)
+- Highlight the KEY DISAGREEMENT between experts. There's always one.
+- Example: "Our Economist argues for organic-only at this budget, but our Social Media Expert insists $50/mo on Reddit ads has 8x ROI."
+- Explain YOUR decision as CGO and why.
+
+### Phase 3: Execution Playbooks (可执行计划)
+- Present 2-3 Playbooks ranked by priority.
+- Each Playbook MUST have:
+  - **Name** (e.g., "Reddit Community Growth")
+  - **Why this channel** (1 sentence with data)
+  - **Phase 1: Prep** (specific setup steps, timeline: X days)
+  - **Phase 2: Execute** (specific actions, frequency, templates)
+  - **Phase 3: Track** (what metrics to watch, what "good" looks like)
+  - **Budget**: exact $ allocation
+  - **Expected outcome**: realistic numbers
+- End each playbook with a ready-to-use template (post title, email subject, etc.)
+
+## MANDATORY ELEMENTS
+1. **Hard Truth**: One uncomfortable truth the user needs to hear. Label it: ⚠️ **Hard truth:**
+2. **Quick Win**: One thing they can do TODAY that will show results THIS WEEK.
+3. **CGO Verdict**: Your personal judgment on the #1 priority and why.
+
+## ANTI-PATTERNS (violation = failure)
+❌ Don't say "based on my analysis" without showing the analysis.
+❌ Don't give a strategy that could apply to any product. Be specific to THIS product.
+❌ Don't list 10 channels. Pick 2-3 and go DEEP.
+❌ Don't skip the Hard Truth. If you can't find one, you haven't thought deeply enough.
 
 ## Expert Outputs
 {expert_summary}
@@ -667,20 +861,31 @@ Synthesize the expert findings into ONE clear, actionable response for the user.
         if user_message:
             self._message_history.append({"role": "user", "content": user_message})
 
-        # 构建上下文摘要注入到消息中
+        # 构建上下文摘要注入到消息中（使用 Prompt Cache 避免重复）
         context_summary_parts = []
         # 品牌配置优先（最重要的上下文）
         if brand_config:
             from app.api.v2.brand import get_brand_context
             brand_text = get_brand_context(brand_config)
             if brand_text:
-                context_summary_parts.append(brand_text)
+                cached_brand, was_cached = self.prompt_cache.check_and_cache(
+                    "brand_config", brand_text, "[Brand config: unchanged]"
+                )
+                context_summary_parts.append(cached_brand)
         if product:
-            context_summary_parts.append(f"[Product info]: {json.dumps(product, ensure_ascii=False, default=str)}")
+            product_str = f"[Product info]: {json.dumps(product, ensure_ascii=False, default=str)}"
+            cached_product, _ = self.prompt_cache.check_and_cache(
+                "product_info", product_str, "[Product info: unchanged since last turn]"
+            )
+            context_summary_parts.append(cached_product)
         if competitors:
             context_summary_parts.append(f"[Competitor data]: {json.dumps(competitors, ensure_ascii=False, default=str)[:500]}")
         if strategy:
-            context_summary_parts.append(f"[Current strategy]: {json.dumps(strategy, ensure_ascii=False, default=str)[:500]}")
+            strategy_str = f"[Current strategy]: {json.dumps(strategy, ensure_ascii=False, default=str)[:500]}"
+            cached_strategy, _ = self.prompt_cache.check_and_cache(
+                "strategy", strategy_str, "[Strategy: unchanged since last turn]"
+            )
+            context_summary_parts.append(cached_strategy)
         if results:
             context_summary_parts.append(f"[Execution results]: {json.dumps(results, ensure_ascii=False, default=str)[:300]}")
         if growth_patterns:
@@ -779,14 +984,13 @@ Synthesize the expert findings into ONE clear, actionable response for the user.
         else:
             messages.extend(filtered_history)
 
-        # 在最后追加语言提醒（紧贴用户最新消息之后，LLM 最容易遵循）
+        # 在最后追加语言指令（使用用户设置的语言，不再猜测）
         if user_message:
-            # 检测用户消息语言
-            has_cjk = any('\u4e00' <= c <= '\u9fff' for c in user_message)
-            lang = "Chinese (中文)" if has_cjk else "English"
+            lang = getattr(self, '_language', 'en')
+            lang_name = "Chinese (中文)" if lang == "zh" else "English"
             messages.append({
                 "role": "user",
-                "content": f"[SYSTEM] Respond in {lang} only. Do NOT use any other language.",
+                "content": f"[SYSTEM] Respond in {lang_name} only. Do NOT use any other language.",
             })
 
         return {

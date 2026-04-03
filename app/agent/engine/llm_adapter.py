@@ -1,47 +1,30 @@
 """
-CrabRes LLM 适配器 — OpenRouter 为主力
+CrabRes LLM 适配器 — Moonshot 为主力，OpenRouter 为备选
 
 === 模型分级策略 ===
 
-我们有 5 个等级的任务，每个对应不同成本的模型。
-核心原则：花最少的钱达到最好的效果。
+当前主力：Moonshot V1 128K（直连，不经 OpenRouter）
+备选：OpenRouter（Claude/DeepSeek/Gemini），需充值后使用
 
 Tier 1: CRITICAL — 首席增长官的核心决策
-  模型: claude-sonnet-4 ($3/$15 per M tokens)
-  场景: Coordinator 判断阶段、关键策略决策、验证产品方向
-  预算: 每次对话最多 5 次 Tier1 调用
-  为什么用贵的: 这是"大脑"，决策质量直接决定策略好坏
+  主力: moonshot-v1-128k (直连 Moonshot API)
+  备选: claude-sonnet-4 via OpenRouter → deepseek-v3 via OpenRouter
 
 Tier 2: THINKING — 深度研究和策略制定
-  模型: deepseek/deepseek-chat-v3-0324 ($0.27/$1.10)
-  场景: 竞品深度分析、用户画像生成、策略制定、SWOT 分析
-  预算: 不限次数，但单次 max_tokens 控制在 4096
-  为什么: DeepSeek V3 性价比极高，推理能力接近 GPT-4
+  主力: moonshot-v1-128k
+  备选: deepseek-v3 via OpenRouter → gemini-flash via OpenRouter
 
 Tier 3: WRITING — 文案创作
-  模型: deepseek/deepseek-chat-v3-0324 ($0.27/$1.10)
-  场景: 社媒帖子、邮件、博客文章、广告文案
-  预算: 按产出控制（一次生成不超过 5 篇）
-  为什么: DeepSeek 中英文都好，成本极低
+  主力: moonshot-v1-128k
+  备选: deepseek-v3 via OpenRouter
 
 Tier 4: PARSING — 工具结果解析、格式化
-  模型: google/gemini-2.5-flash ($0.15/$0.60)
-  场景: 搜索结果解析、网页内容提取、JSON 格式化、简单判断
-  预算: 不限
-  为什么: 最便宜且足够快，这些任务不需要高智能
+  主力: moonshot-v1-128k
+  备选: gemini-flash via OpenRouter → deepseek-v3 via OpenRouter
 
-Tier 5: EMBEDDING — 向量化
-  模型: openai/text-embedding-3-small ($0.02/M)
-  场景: 记忆检索、相似度匹配
-  预算: 按需
-  
 === 降级策略 ===
-每个 Tier 有降级链：如果首选模型失败，自动切换到下一个。
-
-Tier 1: claude-sonnet-4 → deepseek-chat-v3 → moonshot-v1-128k
-Tier 2: deepseek-chat-v3 → moonshot-v1-128k → gemini-2.5-flash
-Tier 3: deepseek-chat-v3 → moonshot-v1-128k
-Tier 4: gemini-2.5-flash → deepseek-chat-v3
+每个 Tier 的降级链：Moonshot → OpenRouter 模型
+Moonshot 走直连 API，不受 OpenRouter 余额限制。
 """
 
 import json
@@ -80,31 +63,7 @@ class ModelSpec:
 
 # ===== 模型注册表 =====
 MODELS: dict[str, ModelSpec] = {
-    # Tier 1: CRITICAL
-    "claude-sonnet-4": ModelSpec(
-        id="anthropic/claude-sonnet-4",
-        display_name="Claude Sonnet 4",
-        input_cost_per_m=3.0,
-        output_cost_per_m=15.0,
-        max_tokens=8192,
-    ),
-    # Tier 2 & 3: THINKING + WRITING
-    "deepseek-v3": ModelSpec(
-        id="deepseek/deepseek-chat-v3-0324",
-        display_name="DeepSeek V3",
-        input_cost_per_m=0.27,
-        output_cost_per_m=1.10,
-        max_tokens=4096,
-    ),
-    # Tier 4: PARSING
-    "gemini-flash": ModelSpec(
-        id="google/gemini-2.5-flash",
-        display_name="Gemini 2.5 Flash",
-        input_cost_per_m=0.15,
-        output_cost_per_m=0.60,
-        max_tokens=4096,
-    ),
-    # 降级备选: Moonshot（不走 OpenRouter）
+    # 主力: Moonshot（直连，不经 OpenRouter）
     "moonshot": ModelSpec(
         id="moonshot-v1-128k",
         display_name="Moonshot V1 128K",
@@ -113,14 +72,39 @@ MODELS: dict[str, ModelSpec] = {
         max_tokens=4096,
         provider="moonshot",
     ),
+    # 备选: Claude via OpenRouter
+    "claude-sonnet-4": ModelSpec(
+        id="anthropic/claude-sonnet-4",
+        display_name="Claude Sonnet 4",
+        input_cost_per_m=3.0,
+        output_cost_per_m=15.0,
+        max_tokens=8192,
+    ),
+    # 备选: DeepSeek via OpenRouter
+    "deepseek-v3": ModelSpec(
+        id="deepseek/deepseek-chat-v3-0324",
+        display_name="DeepSeek V3",
+        input_cost_per_m=0.27,
+        output_cost_per_m=1.10,
+        max_tokens=4096,
+    ),
+    # 备选: Gemini via OpenRouter
+    "gemini-flash": ModelSpec(
+        id="google/gemini-2.5-flash",
+        display_name="Gemini 2.5 Flash",
+        input_cost_per_m=0.15,
+        output_cost_per_m=0.60,
+        max_tokens=4096,
+    ),
 }
 
 # ===== Tier → 模型降级链 =====
+# Moonshot 在所有 Tier 中都是第一选择，OpenRouter 模型作为降级备选
 TIER_CHAIN: dict[TaskTier, list[str]] = {
-    TaskTier.CRITICAL: ["claude-sonnet-4", "deepseek-v3", "moonshot"],
-    TaskTier.THINKING: ["deepseek-v3", "moonshot", "gemini-flash"],
-    TaskTier.WRITING:  ["deepseek-v3", "moonshot"],
-    TaskTier.PARSING:  ["gemini-flash", "deepseek-v3"],
+    TaskTier.CRITICAL: ["moonshot", "claude-sonnet-4", "deepseek-v3"],
+    TaskTier.THINKING: ["moonshot", "deepseek-v3", "gemini-flash"],
+    TaskTier.WRITING:  ["moonshot", "deepseek-v3"],
+    TaskTier.PARSING:  ["moonshot", "gemini-flash", "deepseek-v3"],
 }
 
 
@@ -238,7 +222,22 @@ class AgentLLM:
                 return result
 
             except Exception as e:
-                logger.warning(f"[LLM] {spec.display_name} failed: {e}, trying next...")
+                error_str = str(e)
+                # 402: 余额不足 → 降低 max_tokens 重试同一个模型
+                if "402" in error_str and "credits" in error_str.lower():
+                    reduced_tokens = min(2000, (max_tokens or spec.max_tokens) // 2)
+                    logger.info(f"[LLM] {spec.display_name} 402 insufficient credits, retrying with max_tokens={reduced_tokens}")
+                    try:
+                        result = await self._call(
+                            spec=spec, system_prompt=system_prompt, messages=messages,
+                            tools=tools, temperature=temperature, max_tokens=reduced_tokens,
+                        )
+                        self._track_usage(tier, spec, result)
+                        return result
+                    except Exception:
+                        pass
+                
+                logger.warning(f"[LLM] {spec.display_name} failed: {error_str[:100]}, trying next...")
                 continue
 
         # 全部失败

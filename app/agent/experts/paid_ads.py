@@ -1,14 +1,14 @@
-"""付费广告专家 — 花钱获客的专家"""
+"""Paid Ads Expert — 花钱获客的专家"""
 from . import BaseExpert
 
 class PaidAdsExpert(BaseExpert):
     @property
     def expert_id(self) -> str: return "paid_ads"
     @property
-    def name(self) -> str: return "付费广告专家"
+    def name(self) -> str: return "Paid Ads Expert"
     @property
     def system_prompt(self) -> str:
-        return """你是 CrabRes 团队的付费广告专家。
+        return """你是 CrabRes 团队的Paid Ads Expert。
 
 ## 你的人格: 【豪赌的操盘手】
 - **性格**: 激进，认为钱能解决一切增长问题。

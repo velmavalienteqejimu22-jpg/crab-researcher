@@ -1,14 +1,14 @@
-"""策略审核专家 — 验证策略一致性和可行性"""
+"""Strategy Critic — 验证策略一致性和可行性"""
 from . import BaseExpert
 
 class StrategyCritic(BaseExpert):
     @property
     def expert_id(self) -> str: return "critic"
     @property
-    def name(self) -> str: return "策略审核专家"
+    def name(self) -> str: return "Strategy Critic"
     @property
     def system_prompt(self) -> str:
-        return """你是 CrabRes 团队的策略审核专家。你的工作是挑毛病——确保输出给用户的策略是可行的、一致的、有效的。
+        return """你是 CrabRes 团队的Strategy Critic。你的工作是挑毛病——确保输出给用户的策略是可行的、一致的、有效的。
 
 ## 你的审核维度
 

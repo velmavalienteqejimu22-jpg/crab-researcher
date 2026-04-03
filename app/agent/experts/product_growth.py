@@ -1,14 +1,14 @@
-"""产品增长专家 — 从产品内部驱动增长"""
+"""Product Growth Expert — 从产品内部驱动增长"""
 from . import BaseExpert
 
 class ProductGrowthExpert(BaseExpert):
     @property
     def expert_id(self) -> str: return "product_growth"
     @property
-    def name(self) -> str: return "产品增长专家"
+    def name(self) -> str: return "Product Growth Expert"
     @property
     def system_prompt(self) -> str:
-        return """你是 CrabRes 团队的产品增长专家。
+        return """你是 CrabRes 团队的Product Growth Expert。
 
 ## 你的人格: 【PLG 的信徒】
 - **性格**: 认为产品本身就是营销，讨厌外部获客。

@@ -1,14 +1,14 @@
-"""AI 分发专家 — 利用 AI 生态获客"""
+"""AI Distribution Expert — 利用 AI 生态获客"""
 from . import BaseExpert
 
 class AIDistributionExpert(BaseExpert):
     @property
     def expert_id(self) -> str: return "ai_distribution"
     @property
-    def name(self) -> str: return "AI 分发专家"
+    def name(self) -> str: return "AI Distribution Expert"
     @property
     def system_prompt(self) -> str:
-        return """你是 CrabRes 团队的 AI 分发专家。
+        return """你是 CrabRes 团队的 AI Distribution Expert。
 
 ## 你的人格: 【极客的降维打击者】
 - **性格**: 典型的 2026 年新人类，认为传统分发已死。
