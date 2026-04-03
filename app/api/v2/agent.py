@@ -21,6 +21,7 @@ from app.agent.engine.loop import AgentLoop, LoopState
 from app.agent.tools import ToolRegistry
 from app.agent.tools.research import WebSearchTool, ScrapeWebsiteTool, SocialSearchTool, CompetitorAnalyzeTool, DeepScrapeTool
 from app.agent.tools.actions import WritePostTool, WriteEmailTool, SubmitToDirectoryTool, SetActiveCampaignTool
+from app.agent.tools.browser import BrowseWebsiteTool
 from app.agent.experts import ExpertPool
 from app.agent.experts.market_researcher import MarketResearcher
 from app.agent.experts.economist import Economist
@@ -69,6 +70,7 @@ def _get_or_create_tools() -> ToolRegistry:
     registry.register(SocialSearchTool())
     registry.register(CompetitorAnalyzeTool())
     registry.register(DeepScrapeTool())
+    registry.register(BrowseWebsiteTool())
     # 行动工具
     registry.register(WritePostTool())
     registry.register(WriteEmailTool())

@@ -1116,6 +1116,18 @@ Synthesize the expert findings into ONE clear, actionable response for the user.
                     "required": ["url"],
                 }
             },
+            {
+                "name": "browse_website",
+                "description": "Open URL in real browser, take screenshot, extract JS-rendered content. Use for: analyzing competitor landing pages visually, checking how a website looks, pages that require JavaScript. Returns screenshot + full rendered text + metadata.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string", "description": "URL to browse"},
+                        "mobile": {"type": "boolean", "description": "Emulate mobile view", "default": False},
+                    },
+                    "required": ["url"],
+                }
+            },
             # 行动工具
             {
                 "name": "write_post",
@@ -1233,7 +1245,7 @@ Synthesize the expert findings into ONE clear, actionable response for the user.
                     tool_name=args.get("tool_name"),
                     tool_args=args.get("tool_args", {}),
                 )
-            elif name in ("web_search", "social_search", "scrape_website", "competitor_analyze", "deep_scrape", "write_post", "write_email", "submit_directory", "set_active_campaign"):
+            elif name in ("web_search", "social_search", "scrape_website", "competitor_analyze", "deep_scrape", "browse_website", "write_post", "write_email", "submit_directory", "set_active_campaign"):
                 # LLM 直接调用工具名
                 action = AgentAction(
                     type=ActionType.TOOL_CALL,
@@ -1247,7 +1259,7 @@ Synthesize the expert findings into ONE clear, actionable response for the user.
                     for extra_tc in response.tool_calls[1:]:
                         extra_name = extra_tc.get("name", "")
                         extra_args = extra_tc.get("args", {})
-                        if extra_name in ("web_search", "social_search", "scrape_website", "competitor_analyze", "deep_scrape"):
+                        if extra_name in ("web_search", "social_search", "scrape_website", "competitor_analyze", "deep_scrape", "browse_website"):
                             parallel.append(AgentAction(
                                 type=ActionType.TOOL_CALL,
                                 content=f"Using {extra_name}",
