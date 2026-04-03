@@ -1,13 +1,13 @@
 /**
  * Surface — CrabRes 主界面
+ * 用户每天打开看到的第一个画面。简洁、温暖、有呼吸感。
  */
 
 import { useState, useEffect } from 'react'
 import type { CreatureState } from '../components/creature/types'
 import { api } from '../lib/api'
 import { t, getLang } from '../lib/i18n'
-import { BellIcon, SettingsIcon, PenIcon, ChatIcon, ZapIcon, ShareIcon } from '../components/ui/Icons'
-import LogoImg from '../assets/CrabRes-LOGO.png'
+import { SettingsIcon, PenIcon, ChatIcon, ZapIcon } from '../components/ui/Icons'
 import PixImg from '../assets/pix_basic.png'
 
 interface SurfaceProps {
@@ -24,7 +24,6 @@ export function Surface({ creature, onChat, onPlan, onSettings }: SurfaceProps) 
   const [stats, setStats] = useState<any>(null)
   const [expSummary, setExpSummary] = useState<any>(null)
   const [recentActions, setRecentActions] = useState<any[]>([])
-  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     const load = async () => {
@@ -42,99 +41,52 @@ export function Surface({ creature, onChat, onPlan, onSettings }: SurfaceProps) 
         if (expRes) setExpSummary(expRes)
         setRecentActions((actRes.actions || []).slice(-5).reverse())
       } catch {}
-      setIsLoading(false)
     }
     load()
     const interval = setInterval(load, 60_000)
     return () => clearInterval(interval)
   }, [])
 
+  const hasStats = stats?.growth_rate || stats?.total_users || stats?.streak_days || creature.totalUsers > 0
+
   return (
-    <div className="min-h-screen bg-surface bg-grid bg-noise flex flex-col items-center px-4 py-8 max-w-lg mx-auto relative z-10">
-      {/* 顶部栏 */}
-      <div className="w-full flex items-center justify-between mb-8">
-        <div className="flex items-center gap-2.5">
-          <img src={LogoImg} alt="CrabRes" className="w-7 h-7 rounded-lg" />
-          <span className="font-heading font-bold text-primary tracking-tight">CrabRes</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <button className="p-2 rounded-xl hover:bg-hover transition-colors">
-            <BellIcon />
-          </button>
-        <button onClick={onSettings} className="p-2 rounded-xl hover:bg-hover transition-colors">
+    <div className="min-h-screen bg-surface flex flex-col items-center px-5 py-8 max-w-lg mx-auto">
+      {/* 顶部 */}
+      <div className="w-full flex items-center justify-between mb-10">
+        <span className="text-base font-semibold text-primary tracking-tight">CrabRes</span>
+        <button onClick={onSettings} className="p-2 rounded-lg hover:bg-hover transition-colors text-muted hover:text-primary">
           <SettingsIcon />
-          </button>
-        </div>
+        </button>
       </div>
 
-      {/* Pix */}
-      <div className="mb-2 animate-float">
-        <img src={PixImg} alt="Pix" className="w-[140px] h-[140px] object-contain drop-shadow-lg" />
+      {/* Pix + 问候 */}
+      <div className="flex flex-col items-center mb-8">
+        <img src={PixImg} alt="CrabRes" className="w-24 h-24 object-contain mb-4 animate-float" />
+        <p className="text-sm text-secondary text-center max-w-xs leading-relaxed">{greeting}</p>
       </div>
 
-      {/* 分享 */}
-      <button
-        onClick={async () => {
-          try {
-            const res = await api<any>('/share/card-url')
-            window.open(res.twitter_share, '_blank')
-          } catch { }
-        }}
-        className="text-xs text-muted hover:text-brand transition-colors mb-2 flex items-center gap-1"
-      >
-        <ShareIcon /> {t('surface.share')}
-      </button>
-
-      {/* 问候语 */}
-      <p className="text-sm text-secondary mb-6 text-center max-w-xs">
-        "{greeting}"
-      </p>
-
-      {/* 3 个核心数字 */}
-      {(stats?.growth_rate || stats?.total_users || stats?.streak_days || creature.totalUsers > 0) ? (
-        <div className="flex items-center gap-6 mb-8">
+      {/* 数字 — 只在有数据时 */}
+      {hasStats && (
+        <div className="flex items-center gap-8 mb-10">
           <MetricCard value={`+${stats?.growth_rate ?? creature.growthRate}%`} label={t('metric.growth')} />
+          <div className="w-px h-8 bg-border" />
           <MetricCard value={`${stats?.total_users ?? creature.totalUsers}`} label={t('metric.users')} />
-          <MetricCard value={`${stats?.streak_days ?? creature.streakDays}d`} label={t('metric.streak')} accent />
-        </div>
-      ) : (
-        <div className="mb-8 text-center">
-          <p className="text-sm text-secondary">{t('surface.empty')}</p>
+          <div className="w-px h-8 bg-border" />
+          <MetricCard value={`${stats?.streak_days ?? creature.streakDays}d`} label={t('metric.streak')} />
         </div>
       )}
 
-      {/* 活跃战役 */}
-      {(stats?.active_campaign_url || localStorage.getItem('crabres_active_tweet')) && (
-        <div className="w-full mb-8 animate-fade-in">
-          <h3 className="text-[10px] font-bold text-accent uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
-            <span className="w-1.5 h-1.5 bg-accent rounded-full animate-ping"></span>
-            {t('surface.campaign')}
-          </h3>
-          <div className="card border-accent/20 bg-accent/5 p-4 flex items-center justify-between group hover:border-accent/40 transition-all">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center text-accent">
-                <ShareIcon />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-primary">Day 1: Global Launch Post</p>
-                <p className="text-[10px] text-muted font-mono tracking-tighter uppercase">Status: Live & Tracking</p>
-              </div>
-            </div>
-            <a 
-              href={stats?.active_campaign_url || localStorage.getItem('crabres_active_tweet') || '#'} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-[11px] font-bold text-accent px-4 py-2 rounded-xl border border-accent/20 hover:bg-accent hover:text-white transition-all shadow-sm"
-            >
-              {t('surface.viewLive')} →
-            </a>
-          </div>
-        </div>
-      )}
+      {/* 主 CTA — 永远可见 */}
+      <div className="w-full mb-8">
+        <button onClick={onChat}
+          className="w-full py-3.5 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-hover transition-all shadow-md">
+          {t('surface.talk')}
+        </button>
+      </div>
 
       {/* 今日任务 */}
       <div className="w-full mb-6">
-        <h3 className="text-xs font-medium text-muted uppercase tracking-wider mb-3 font-heading">
+        <h3 className="text-xs font-medium text-muted uppercase tracking-wider mb-3">
           {t('surface.today')}
         </h3>
         <div className="space-y-2">
@@ -148,40 +100,37 @@ export function Surface({ creature, onChat, onPlan, onSettings }: SurfaceProps) 
               onAction={onChat}
             />
           )) : (
-            <TaskCard icon={<ChatIcon />} 
+            <TaskCard icon={<ChatIcon />}
               title={t('surface.task.default')}
-              subtitle={t('surface.task.default.sub')} 
+              subtitle={t('surface.task.default.sub')}
               action={t('action.chat')}
               onAction={onChat} />
           )}
         </div>
       </div>
 
-      {/* 增长实验追踪 */}
+      {/* 增长实验 — 有数据才显示 */}
       {(expSummary?.total_actions > 0 || recentActions.length > 0) && (
         <div className="w-full mb-6">
-          <h3 className="text-xs font-medium text-muted uppercase tracking-wider mb-3 font-heading flex items-center gap-2">
+          <h3 className="text-xs font-medium text-muted uppercase tracking-wider mb-3 flex items-center gap-2">
             {t('surface.experiments')}
             {expSummary?.total_actions > 0 && (
-              <span className="text-[10px] font-mono text-brand bg-brand/10 px-2 py-0.5 rounded-full">
-                {expSummary.tracked_actions}/{expSummary.total_actions} {t('common.tracked')}
+              <span className="text-[10px] font-mono text-brand bg-brand/8 px-2 py-0.5 rounded-full">
+                {expSummary.tracked_actions}/{expSummary.total_actions}
               </span>
             )}
           </h3>
           <div className="space-y-2">
             {recentActions.map((a: any, i: number) => (
-              <div key={a.id || i} className="flex items-stretch rounded-2xl bg-card border border-border overflow-hidden hover:border-accent/30 transition-all group">
-                <div className={`w-1 shrink-0 ${a.status === 'tracked' ? 'bg-emerald-500' : 'bg-accent'}`} />
-                <div className="flex items-center gap-3 p-3 flex-1 min-w-0">
-                  <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center text-xs font-bold text-accent uppercase">
-                    {(a.platform || '?').slice(0, 2)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-primary truncate">{a.content_preview || a.url || 'Action recorded'}</p>
-                    <p className="text-[10px] text-muted font-mono">
-                      {a.platform} · {a.action_type} · {a.status === 'tracked' ? `✓ ${t('common.tracked')}` : `⏳ ${t('common.pending')}`}
-                    </p>
-                  </div>
+              <div key={a.id || i} className="flex items-center gap-3 p-3 rounded-xl border border-border hover:border-brand/20 transition-all">
+                <div className="w-8 h-8 rounded-lg bg-brand/8 flex items-center justify-center text-xs font-semibold text-brand uppercase">
+                  {(a.platform || '?').slice(0, 2)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-primary truncate">{a.content_preview || a.url || 'Action recorded'}</p>
+                  <p className="text-[10px] text-muted">
+                    {a.platform} · {a.status === 'tracked' ? `✓ ${t('common.tracked')}` : t('common.pending')}
+                  </p>
                 </div>
               </div>
             ))}
@@ -190,89 +139,67 @@ export function Surface({ creature, onChat, onPlan, onSettings }: SurfaceProps) 
       )}
 
       {/* 发现 */}
-      <div className="w-full mb-8" id="discoveries-section">
-        <h3 className="text-xs font-medium text-muted uppercase tracking-wider mb-3">
-          {t('surface.discoveries')}
-        </h3>
-        <div className="space-y-2">
-          {discoveries.length > 0 ? discoveries.map((d, i) => (
-            <DiscoveryCard
-              key={i}
-              title={d.title || d.change || d.competitor || 'New discovery'}
-              action={d.url ? t('action.view') : t('action.analyze')}
-              onAction={() => d.url ? window.open(d.url, '_blank') : onChat()}
-            />
-          )) : (
-            <div className="text-center py-6 text-sm text-muted">
-              {t('surface.scanning')}<br /><span className="text-xs">{t('surface.scanning.sub')}</span>
-            </div>
-          )}
+      {discoveries.length > 0 && (
+        <div className="w-full mb-6">
+          <h3 className="text-xs font-medium text-muted uppercase tracking-wider mb-3">
+            {t('surface.discoveries')}
+          </h3>
+          <div className="space-y-2">
+            {discoveries.map((d, i) => (
+              <div key={i} className="flex items-center gap-3 p-3 rounded-xl border border-border hover:border-accent/20 transition-all cursor-pointer"
+                onClick={() => d.url ? window.open(d.url, '_blank') : onChat()}>
+                <div className="w-8 h-8 rounded-lg bg-accent/8 flex items-center justify-center text-accent">
+                  <ZapIcon />
+                </div>
+                <p className="text-sm text-primary flex-1">{d.title || d.change || 'New discovery'}</p>
+                <span className="text-xs text-muted">→</span>
+              </div>
+            ))}
+          </div>
         </div>
+      )}
+
+      {/* Growth Plan 入口 */}
+      <div className="w-full mb-8">
+        <button onClick={onPlan}
+          className="w-full py-3 rounded-xl border border-border text-sm font-medium text-primary hover:bg-hover transition-all">
+          {t('surface.plan')}
+        </button>
       </div>
 
-      {/* 底部入口 */}
-      <div className="fixed bottom-0 left-0 right-0 bg-surface/80 backdrop-blur-xl border-t border-border z-20">
-        <div className="max-w-lg mx-auto flex gap-3 px-4 py-3">
-          <button onClick={onChat}
-            className="flex-1 py-3.5 rounded-xl bg-brand text-white text-sm font-heading font-semibold hover:bg-brand-hover transition-all shadow-md hover:shadow-lg">
-            {t('surface.talk')}
-          </button>
-          <button onClick={onPlan}
-            className="flex-1 py-3.5 rounded-xl card text-primary text-sm font-heading font-semibold hover:shadow-md transition-all">
-            {t('surface.plan')}
-          </button>
-        </div>
-      </div>
-      <div className="h-20" />
+      {/* 空状态提示 */}
+      {!hasStats && discoveries.length === 0 && tasks.length === 0 && (
+        <p className="text-xs text-muted text-center mt-4">{t('surface.empty')}</p>
+      )}
     </div>
   )
 }
 
 // ====== 子组件 ======
 
-function MetricCard({ value, label, accent }: { value: string; label: string; accent?: boolean }) {
+function MetricCard({ value, label }: { value: string; label: string }) {
   return (
-    <div className="text-center group cursor-default">
-      <div className={`font-heading text-3xl font-extrabold tracking-tighter transition-all group-hover:scale-110 ${accent ? 'text-brand drop-shadow-[0_0_15px_var(--brand-glow)]' : 'text-primary'}`}>
-        {value}
-      </div>
-      <div className="text-[10px] text-muted mt-1 font-heading font-bold uppercase tracking-widest opacity-60 group-hover:opacity-100 transition-opacity">{label}</div>
+    <div className="text-center">
+      <div className="text-2xl font-bold text-primary tracking-tight">{value}</div>
+      <div className="text-[10px] text-muted mt-0.5 uppercase tracking-wider">{label}</div>
     </div>
   )
 }
 
 function TaskCard({ icon, title, subtitle, action, onAction }: { icon: React.ReactNode; title: string; subtitle: string; action: string; onAction?: () => void }) {
   return (
-    <div className="flex items-stretch rounded-2xl bg-card border border-border hover:border-brand/30 transition-all group hover:shadow-glow overflow-hidden">
-      <div className="w-1 bg-brand rounded-l-2xl shrink-0" />
-      <div className="flex items-center gap-3 p-4 flex-1 min-w-0">
-        <div className="w-9 h-9 rounded-xl bg-brand/10 flex items-center justify-center text-brand shrink-0">
-          {icon}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold text-primary tracking-tight">{title}</p>
-          <p className="text-xs text-muted truncate opacity-70 font-mono tracking-tighter">{subtitle}</p>
-        </div>
-        <button onClick={onAction} className="text-[11px] font-bold text-brand sm:opacity-0 sm:group-hover:opacity-100 transition-all px-3 py-1.5 rounded-lg border border-brand/20 hover:bg-brand hover:text-white">
-          {action} →
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function DiscoveryCard({ title, action, onAction }: { title: string; action: string; onAction?: () => void }) {
-  return (
-    <div className="flex items-center gap-3 p-4 rounded-2xl bg-card border border-border hover:border-accent/30 transition-all group hover:shadow-lg">
-      <div className="w-9 h-9 rounded-xl bg-accent/10 flex items-center justify-center text-accent shrink-0">
-        <ZapIcon />
+    <div className="flex items-center gap-3 p-3.5 rounded-xl border border-border hover:border-brand/20 hover:shadow-sm transition-all group cursor-pointer"
+      onClick={onAction}>
+      <div className="w-9 h-9 rounded-lg bg-brand/8 flex items-center justify-center text-brand shrink-0">
+        {icon}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold text-primary tracking-tight">{title}</p>
+        <p className="text-sm font-medium text-primary">{title}</p>
+        <p className="text-xs text-muted truncate">{subtitle}</p>
       </div>
-      <button onClick={onAction} className="text-[11px] font-bold text-accent sm:opacity-0 sm:group-hover:opacity-100 transition-all px-3 py-1.5 rounded-lg border border-accent/20 hover:bg-accent hover:text-white">
+      <span className="text-xs text-brand font-medium opacity-0 group-hover:opacity-100 transition-opacity">
         {action} →
-      </button>
+      </span>
     </div>
   )
 }
@@ -282,36 +209,36 @@ function DiscoveryCard({ title, action, onAction }: { title: string; action: str
 function getGreeting(creature: CreatureState): string {
   const hour = new Date().getHours()
   const lang = getLang()
-  
+
   const greetings = {
     en: {
       morning: [
         `Good morning! ${creature.streakDays} days strong.`,
-        `Rise and grind! Your competitors are already up.`,
-        `New day, new users. Let's go.`,
+        `New day, new opportunities.`,
+        `Rise and build. Your market is waiting.`,
       ],
       afternoon: [
-        `Quick check-in. 2 things need your attention.`,
-        `Your growth engine is humming. Keep it up.`,
+        `Quick check-in. How's growth going?`,
+        `Your growth engine is running. Keep it up.`,
       ],
       evening: [
-        `Wrapping up the day. Here's what happened.`,
-        `Good evening! Tomorrow's content is ready for you.`,
+        `Wrapping up. Here's what happened today.`,
+        `Good evening! Tomorrow's plan is ready.`,
       ],
     },
     zh: {
       morning: [
-        `早安！已经连续增长 ${creature.streakDays} 天了。`,
-        `别睡了，你的竞争对手已经在偷跑流量了。`,
-        `新的一天，冲！`,
+        `早安！连续增长 ${creature.streakDays} 天了。`,
+        `新的一天，新的机会。`,
+        `起来干活，你的市场在等你。`,
       ],
       afternoon: [
-        `简单播报下：发现 2 个值得注意的增长机会。`,
-        `你的增长引擎运转良好，继续保持。`,
+        `下午好，增长进展如何？`,
+        `引擎运转中，继续保持。`,
       ],
       evening: [
-        `复盘时间。今天市场发生了这些事。`,
-        `晚上好！明天的内容我已经帮你准备好了。`,
+        `复盘时间。今天发生了这些。`,
+        `晚上好！明天的计划已就绪。`,
       ],
     }
   }

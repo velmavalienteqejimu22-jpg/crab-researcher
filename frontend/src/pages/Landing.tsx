@@ -2,10 +2,10 @@
  * Landing Page v2 — 一鸣惊人
  * 
  * 设计原则：
- * - 渐变背景 + 网格纹理 + 噪点（不是纯白）
+ * - Warm cream background（不是纯白）
  * - Hero 区有生物体动画作为视觉焦点
  * - 每个区块有滚动进入动画
- * - Space Grotesk 标题 + DM Sans 正文
+ * - Inter font system
  * - 玻璃态卡片 + hover 提升
  */
 
@@ -73,7 +73,7 @@ export function Landing({ onGetStarted, onLogin, onCompare }: LandingProps) {
   }
 
   return (
-    <div className="min-h-screen bg-surface bg-grid bg-noise relative z-10">
+    <div className="min-h-screen bg-surface  relative z-10">
       {/* 顶部渐变光晕 */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-brand/5 rounded-full blur-[120px] pointer-events-none" />
 
