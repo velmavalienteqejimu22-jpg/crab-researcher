@@ -1,19 +1,10 @@
 /**
- * Landing Page v2 — 一鸣惊人
- * 
- * 设计原则：
- * - Warm cream background（不是纯白）
- * - Hero 区有生物体动画作为视觉焦点
- * - 每个区块有滚动进入动画
- * - Inter font system
- * - 玻璃态卡片 + hover 提升
+ * Landing Page — Clean, warm, focused
+ * Tavily-inspired: cream background, soft shadows, Inter font, no noise
  */
 
-import { useState } from 'react'
 import PixFrontImg from '../assets/pix_fronted.png'
-// creature types no longer needed for landing
 import { EXPERTS } from '../lib/experts'
-import LogoImg from '../assets/CrabRes-LOGO.png'
 
 interface LandingProps {
   onGetStarted: () => void
@@ -21,401 +12,137 @@ interface LandingProps {
   onCompare?: () => void
 }
 
-export function Landing({ onGetStarted, onLogin, onCompare }: LandingProps) {
-
-  // pix images used instead of generated creatures
-  
-
-  // 交互式 Demo 状态
-  const [demoInput, setDemoInput] = useState('')
-  const [demoState, setDemoState] = useState<'idle' | 'searching' | 'done' | 'error'>('idle')
-  const [demoPhase, setDemoPhase] = useState('')
-  const [demoData, setDemoData] = useState<any>(null)
-
-  const runDemo = async () => {
-    if (!demoInput.trim()) return
-    setDemoState('searching')
-    setDemoData(null)
-
-    // 渐进式展示搜索阶段（真实 API 在后台跑）
-    setDemoPhase(`Searching competitors for "${demoInput.trim().slice(0, 30)}"...`)
-    const phaseTimer1 = setTimeout(() => setDemoPhase('Scanning Reddit & Hacker News for user discussions...'), 3000)
-    const phaseTimer2 = setTimeout(() => setDemoPhase('Analyzing market data...'), 6000)
-    const phaseTimer3 = setTimeout(() => setDemoPhase('Generating insights...'), 9000)
-
-    try {
-      const API = (import.meta as any).env?.VITE_API_BASE || '/api'
-      const res = await fetch(`${API}/demo/quick-scan`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ product_description: demoInput.trim() }),
-      })
-
-      clearTimeout(phaseTimer1)
-      clearTimeout(phaseTimer2)
-      clearTimeout(phaseTimer3)
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.detail || `Error ${res.status}`)
-      }
-
-      const data = await res.json()
-      setDemoData(data)
-      setDemoState('done')
-    } catch (e: any) {
-      clearTimeout(phaseTimer1)
-      clearTimeout(phaseTimer2)
-      clearTimeout(phaseTimer3)
-      console.error('Demo scan failed:', e)
-      setDemoState('error')
-    }
-  }
-
+export function Landing({ onGetStarted, onLogin }: LandingProps) {
   return (
-    <div className="min-h-screen bg-surface  relative z-10">
-      {/* 顶部渐变光晕 */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-brand/5 rounded-full blur-[120px] pointer-events-none" />
-
+    <div className="min-h-screen bg-surface">
       {/* Nav */}
-      <nav className="flex items-center justify-between px-6 py-4 max-w-5xl mx-auto relative z-10">
-        <div className="flex items-center gap-2.5">
-          <img src={LogoImg} alt="CrabRes" className="w-7 h-7 rounded-lg" />
-          <span className="font-heading font-bold text-primary tracking-tight">CrabRes</span>
-        </div>
+      <nav className="max-w-4xl mx-auto flex items-center justify-between px-6 py-5">
+        <span className="text-base font-semibold text-primary tracking-tight">CrabRes</span>
         <div className="flex items-center gap-3">
-          <button onClick={onLogin} className="btn-ghost !text-sm">Log in</button>
-          <button onClick={onGetStarted} className="btn-primary !text-sm">Start free →</button>
+          <button onClick={onLogin} className="text-sm text-secondary hover:text-primary transition-colors">Log in</button>
+          <button onClick={onGetStarted} className="text-sm font-medium text-white bg-brand hover:bg-brand-hover px-4 py-2 rounded-lg transition-all">
+            Get started free
+          </button>
         </div>
       </nav>
 
       {/* Hero */}
-      <section className="text-center px-4 pt-20 pb-24 max-w-2xl mx-auto relative z-10">
-        {/* 生物体浮动在标题上方 */}
-        <div className="mb-6 animate-float">
-          <img src={PixFrontImg} alt="CrabRes" className="w-20 h-20 object-contain" />
+      <section className="max-w-2xl mx-auto text-center px-6 pt-16 pb-20">
+        <div className="mb-6">
+          <img src={PixFrontImg} alt="CrabRes" className="w-16 h-16 mx-auto object-contain" />
         </div>
 
-        <h1 className="font-heading text-5xl sm:text-6xl font-bold tracking-tight leading-[1.1] mb-5">
-          <span className="text-primary">You build it.</span><br />
-          <span className="text-gradient">We grow it.</span>
+        <h1 className="text-4xl sm:text-5xl font-bold text-primary tracking-tight leading-[1.15] mb-5">
+          You build it.<br />
+          <span className="text-brand">We grow it.</span>
         </h1>
 
-        <p className="text-lg text-secondary max-w-md mx-auto mb-8 leading-relaxed">
-          The AI growth agent that researches your market, validates your direction,
-          and writes every post, email, and plan — for you.
+        <p className="text-lg text-secondary max-w-lg mx-auto mb-8 leading-relaxed">
+          The AI growth agent that researches your market, analyzes competitors by name,
+          and creates a playbook you can execute — not generic advice.
         </p>
 
-        {/* 交互式 Demo 输入框 */}
-        <div className="max-w-lg mx-auto mb-6">
-          {demoState === 'idle' ? (
-            <div className="flex gap-2">
-              <input
-                value={demoInput}
-                onChange={e => setDemoInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && runDemo()}
-                placeholder="Describe your product (e.g., AI resume optimizer)"
-                className="flex-1 !rounded-xl !py-3 !text-base"
-              />
-              <button
-                onClick={demoInput.trim() ? runDemo : onGetStarted}
-                className="btn-primary !py-3 !px-6 !rounded-xl shadow-lg !text-base whitespace-nowrap"
-              >
-                {demoInput.trim() ? 'Scan market →' : 'Start free →'}
-              </button>
-            </div>
-          ) : demoState === 'searching' ? (
-            <div className="card p-5 text-left">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-2 h-2 rounded-full bg-brand animate-ping" />
-                <span className="text-sm font-heading font-medium text-primary">Scanning real market data...</span>
-              </div>
-              <p className="text-xs text-muted animate-pulse">{demoPhase}</p>
-              <div className="mt-3 h-1.5 rounded-full bg-border overflow-hidden">
-                <div className="h-full bg-brand/60 rounded-full animate-[expand_12s_ease-in-out_forwards]" 
-                  style={{ width: '0%', animation: 'expand 12s ease-in-out forwards' }} />
-              </div>
-              <style>{`@keyframes expand { 0% { width: 5%; } 50% { width: 60%; } 80% { width: 85%; } 100% { width: 95%; } }`}</style>
-            </div>
-          ) : demoState === 'error' ? (
-            <div className="card p-5 text-left">
-              <p className="text-sm text-secondary mb-3">Couldn't reach the research engine right now. Try the full experience instead:</p>
-              <button onClick={onGetStarted} className="btn-primary w-full !py-3 !rounded-xl">
-                Start free — full research inside →
-              </button>
-            </div>
-          ) : demoData ? (
-            <div className="card p-0 text-left overflow-hidden">
-              {/* 竞品发现 */}
-              {demoData.competitors?.length > 0 && (
-                <div className="p-4 border-b border-border">
-                  <p className="text-[10px] font-heading font-bold text-brand uppercase tracking-wider mb-2">
-                    {demoData.competitors.length} Competitors Found
-                  </p>
-                  <div className="space-y-2">
-                    {demoData.competitors.slice(0, 3).map((c: any, i: number) => (
-                      <div key={i} className="flex items-start gap-2 animate-fade-in" style={{ animationDelay: `${i * 0.1}s`, animationFillMode: 'forwards', opacity: 0 }}>
-                        <span className="text-brand text-xs mt-0.5">●</span>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-primary truncate">{c.name}</p>
-                          <p className="text-xs text-muted truncate">{c.snippet}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+        <button onClick={onGetStarted}
+          className="text-base font-medium text-white bg-brand hover:bg-brand-hover px-8 py-3.5 rounded-xl transition-all shadow-md hover:shadow-lg">
+          Start free — no credit card
+        </button>
 
-              {/* 社媒讨论 */}
-              {demoData.social_mentions?.length > 0 && (
-                <div className="p-4 border-b border-border">
-                  <p className="text-[10px] font-heading font-bold text-muted uppercase tracking-wider mb-2">
-                    {demoData.social_mentions.length} Community Discussions
-                  </p>
-                  <div className="space-y-1.5">
-                    {demoData.social_mentions.slice(0, 2).map((s: any, i: number) => (
-                      <div key={i} className="flex items-center gap-2 text-xs animate-fade-in" style={{ animationDelay: `${0.3 + i * 0.1}s`, animationFillMode: 'forwards', opacity: 0 }}>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-hover font-mono uppercase">{s.platform}</span>
-                        <span className="text-secondary truncate">{s.title}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* 关键洞察 + 刺痛真话 */}
-              <div className="p-4 space-y-2">
-                {demoData.key_insight && (
-                  <div className="flex gap-2 animate-fade-in" style={{ animationDelay: '0.5s', animationFillMode: 'forwards', opacity: 0 }}>
-                    <span className="text-brand shrink-0">💡</span>
-                    <p className="text-sm text-primary font-medium leading-relaxed">{demoData.key_insight}</p>
-                  </div>
-                )}
-                {demoData.uncomfortable_truth && (
-                  <div className="flex gap-2 animate-fade-in" style={{ animationDelay: '0.7s', animationFillMode: 'forwards', opacity: 0 }}>
-                    <span className="text-accent shrink-0">⚠️</span>
-                    <p className="text-sm text-secondary leading-relaxed">{demoData.uncomfortable_truth}</p>
-                  </div>
-                )}
-              </div>
-
-              {/* CTA */}
-              <div className="p-4 bg-brand/5 border-t border-brand/10 animate-fade-in" style={{ animationDelay: '0.9s', animationFillMode: 'forwards', opacity: 0 }}>
-                <button onClick={onGetStarted}
-                  className="btn-primary w-full !py-3 !rounded-xl">
-                  See full strategy from 13 experts — free →
-                </button>
-                <p className="text-[10px] text-muted text-center mt-2">This was a 15-second scan. Full analysis takes 2 minutes.</p>
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        <p className="text-xs text-muted">
-          {demoState === 'idle' ? 'Free to start · No credit card required' 
-            : demoState === 'done' ? 'Real data from live internet search — not templates' 
-            : ''}
-        </p>
+        <p className="text-xs text-muted mt-4">Free tier available. No credit card required.</p>
       </section>
 
-      {/* 三个核心卖点 */}
-      <section className="px-4 pb-24 max-w-4xl mx-auto relative z-10">
+      {/* What makes it different */}
+      <section className="max-w-3xl mx-auto px-6 pb-20">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           {[
-            { icon: '◎', title: 'Validates first', desc: "Won't waste your time on a bad direction. Tells you the truth — backed by real competitor data." },
-            { icon: '◉', title: '13 expert minds', desc: 'Economist, psychologist, copywriter, designer — a full growth team debating YOUR strategy.' },
-            { icon: '✦', title: 'Writes everything', desc: 'Every Reddit post, outreach email, landing page. Copy-paste ready. Not templates — personalized.' },
-          ].map((f, i) => (
-            <div key={i} className="card p-7 text-center group animate-fade-in" style={{ animationDelay: `${i * 0.1}s`, animationFillMode: 'forwards', opacity: 0 }}>
-              <div className="text-3xl mb-4">{f.icon}</div>
-              <h3 className="font-heading font-semibold text-primary text-lg mb-2">{f.title}</h3>
-              <p className="text-sm text-secondary leading-relaxed">{f.desc}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* 群聊预览 */}
-      <section className="px-4 pb-24 max-w-3xl mx-auto relative z-10">
-        <h2 className="font-heading text-3xl font-bold text-primary text-center mb-3">
-          A growth team that works for you
-        </h2>
-        <p className="text-sm text-secondary text-center mb-10 max-w-md mx-auto">
-          13 AI experts discuss your product in a roundtable.
-          You see one conversation. Behind it, 13 minds are thinking.
-        </p>
-
-        {/* 模拟群聊界面 — 像真实 app 的预览 */}
-        <div className="card overflow-hidden card-glow">
-          {/* 伪 app 头部 */}
-          <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border bg-hover/50">
-            <div className="flex -space-x-1.5">
-              {['market_researcher', 'economist', 'psychologist', 'product_growth'].map((eid) => {
-                const expert = EXPERTS[eid]
-                return expert ? (
-                  <img key={eid} src={expert.avatar} alt={expert.short}
-                    className="w-6 h-6 rounded-full border-2 border-white object-cover" />
-                ) : null
-              })}
-            </div>
-            <div className="flex-1">
-              <p className="text-xs font-heading font-semibold text-primary">Growth Team</p>
-              <p className="text-[10px] text-muted">4 experts active</p>
-            </div>
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          </div>
-
-          {/* 消息列表 */}
-          <div className="p-4 space-y-3">
-            {[
-              { eid: 'market_researcher', name: 'Market Researcher', color: '#0EA5E9', msg: 'Found 3 competitors: FocusBear ($4.99/mo), Freedom ($8.99/mo), Cold Turkey ($39 one-time). Your pricing sweet spot is $5-9/mo.' },
-              { eid: 'economist', name: 'Economist', color: '#10B981', msg: 'At $50/mo budget, skip ads. Reddit organic + cold DM = best ROI. Estimated CAC: $0.80.' },
-              { eid: 'psychologist', name: 'Psychologist', color: '#14B8A6', msg: 'Frame it as "proof you\'re productive" — not "website blocker." Remote workers\' core anxiety is guilt about wasted time.' },
-              { eid: 'product_growth', name: 'CrabRes', color: '#F97316', msg: 'Based on research: lead with "deep work tracker" angle. Here\'s your first Reddit post, ready to copy-paste...' },
-            ].map((m, i) => (
-              <div key={i} className="flex gap-2.5 animate-fade-in" style={{ animationDelay: `${0.3 + i * 0.15}s`, animationFillMode: 'forwards', opacity: 0 }}>
-                <img src={EXPERTS[m.eid]?.avatar} alt={m.name}
-                  className="w-7 h-7 shrink-0 rounded-full mt-0.5 object-cover"
-                  style={{ border: `1.5px solid ${m.color}30` }} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-heading font-semibold mb-0.5" style={{ color: m.color }}>{m.name}</p>
-                  <div className="px-3 py-2 rounded-xl rounded-tl-sm text-[13px] text-secondary leading-relaxed"
-                    style={{ background: m.color + '06', border: `1px solid ${m.color}10` }}>
-                    {m.msg}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* 伪输入框 */}
-          <div className="px-4 py-3 border-t border-border flex gap-2">
-            <div className="flex-1 bg-hover rounded-xl px-3 py-2 text-xs text-muted">
-              Describe your product...
-            </div>
-            <div className="w-8 h-8 rounded-xl bg-brand flex items-center justify-center">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 生物体展示 */}
-      <section className="px-4 pb-24 max-w-4xl mx-auto text-center relative z-10">
-        <h2 className="font-heading text-3xl font-bold text-primary mb-3">Your growth companion</h2>
-        <p className="text-sm text-secondary mb-10 max-w-md mx-auto">
-          10 unique species. Each reflects your product. It grows as you grow.
-        </p>
-        <div className="flex flex-wrap justify-center gap-6">
-          <img src={PixFrontImg} alt="CrabRes" className="w-16 h-16 object-contain" />
-        </div>
-      </section>
-
-      {/* 产品能力展示 */}
-      <section className="px-4 pb-24 max-w-3xl mx-auto relative z-10">
-        <h2 className="font-heading text-3xl font-bold text-primary text-center mb-10">What CrabRes does for you</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {[
-            { quote: "Tells you if your product idea has no market — before you waste months building.", author: "Validation" },
-            { quote: "Writes Reddit posts, cold emails, and outreach DMs you can copy-paste and publish.", author: "Execution" },
-            { quote: "Calculates your budget allocation so you don't burn money on the wrong channels.", author: "Economics" },
-            { quote: "Finds niche communities and partnership opportunities you'd never discover manually.", author: "Discovery" },
-          ].map((t, i) => (
-            <div key={i} className="card p-5 animate-fade-in" style={{ animationDelay: `${i * 0.1}s`, animationFillMode: 'forwards', opacity: 0 }}>
-              <p className="text-sm text-primary leading-relaxed mb-3">"{t.quote}"</p>
-              <p className="text-xs text-brand font-heading font-semibold">{t.author}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* 定价 */}
-      <section className="px-4 pb-24 max-w-3xl mx-auto relative z-10">
-        <h2 className="font-heading text-3xl font-bold text-primary text-center mb-2">Simple pricing</h2>
-        <p className="text-sm text-muted text-center mb-10">Start free. Upgrade when you're ready.</p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {[
-            { name: 'Free', price: '$0', period: '', features: ['1 project', 'Basic research', '5 chats/day'], cta: 'Start free', hl: false },
-            { name: 'Pro', price: '$29', period: '/mo', features: ['3 projects', '13 experts + 8 skills', 'Unlimited chats', 'Daily tasks', 'Competitor monitoring'], cta: 'Start 14-day trial', hl: true },
-            { name: 'Team', price: '$79', period: '/mo', features: ['Unlimited projects', 'Everything in Pro', 'API + MCP access', 'Team collaboration'], cta: 'Contact us', hl: false },
-          ].map((p, i) => (
-            <div key={i} className={`card p-6 ${p.hl ? 'border-brand ring-1 ring-brand/20 card-glow' : ''}`}>
-              {p.hl && <span className="text-[10px] font-heading font-semibold text-brand mb-2 block uppercase tracking-wider">Most popular</span>}
-              <h3 className="font-heading font-semibold text-primary text-lg">{p.name}</h3>
-              <div className="flex items-baseline gap-0.5 mt-1 mb-5">
-                <span className="font-heading text-4xl font-bold text-primary">{p.price}</span>
-                <span className="text-sm text-muted">{p.period}</span>
-              </div>
-              <ul className="space-y-2 mb-6">
-                {p.features.map(f => (
-                  <li key={f} className="text-sm text-secondary flex items-center gap-2">
-                    <span className="text-brand text-xs">✓</span>{f}
-                  </li>
-                ))}
-              </ul>
-              <button onClick={onGetStarted}
-                className={`w-full py-2.5 rounded-lg text-sm font-heading font-medium transition-all ${
-                  p.hl ? 'btn-primary' : 'bg-hover text-primary hover:bg-border'
-                }`}>
-                {p.cta}
-              </button>
-            </div>
-          ))}
-        </div>
-        <p className="text-xs text-muted text-center mt-4">Pro trial is free for 14 days. No credit card required.</p>
-      </section>
-
-      {/* FAQ */}
-      <section className="px-4 pb-24 max-w-2xl mx-auto relative z-10">
-        <h2 className="font-heading text-3xl font-bold text-primary text-center mb-10">Questions</h2>
-        <div className="space-y-3">
-          {[
-            { q: "How is this different from ChatGPT?", a: "ChatGPT doesn't research your specific competitors, forgets everything next session, and gives the same advice to everyone. CrabRes searches the real internet, remembers your product across weeks, and has 13 specialized experts with different perspectives." },
-            { q: "Will it work for my niche?", a: "CrabRes doesn't use templates. It researches YOUR market and YOUR competitors. If your niche is too small, it will honestly tell you — and suggest pivots." },
-            { q: "What if I have zero marketing experience?", a: "That's exactly who this is for. Describe your product, and CrabRes does the rest. Every task is copy-paste simple." },
-            { q: "Can I cancel anytime?", a: "Yes. Cancel with one click. Downgrade to Free keeps all your data." },
+            {
+              title: 'Researches first',
+              desc: 'Finds your competitors, their traffic sources, and where your users hang out — before giving any advice.',
+            },
+            {
+              title: '13 expert minds',
+              desc: 'Economist, psychologist, copywriter, social media strategist — they debate YOUR strategy, not templates.',
+            },
+            {
+              title: 'Writes everything',
+              desc: 'Every Reddit post, outreach email, and content plan. Copy-paste ready. Personalized to your product.',
+            },
           ].map((item, i) => (
-            <FaqItem key={i} q={item.q} a={item.a} />
+            <div key={i} className="p-5 rounded-xl border border-border bg-[var(--bg-card)] shadow-sm">
+              <h3 className="text-sm font-semibold text-primary mb-2">{item.title}</h3>
+              <p className="text-sm text-secondary leading-relaxed">{item.desc}</p>
+            </div>
           ))}
         </div>
       </section>
 
-      {/* Final CTA */}
-      <section className="text-center px-4 pb-24 relative z-10">
-        {onCompare && (
-          <button onClick={onCompare} className="text-sm text-brand hover:underline mb-6 block mx-auto">
-            See how CrabRes compares to ChatGPT →
-          </button>
-        )}
-        <h2 className="font-heading text-3xl font-bold text-primary mb-5">Stop guessing.<br />Start growing.</h2>
+      {/* How it works */}
+      <section className="max-w-2xl mx-auto px-6 pb-20">
+        <h2 className="text-2xl font-bold text-primary text-center mb-10">How it works</h2>
+        <div className="space-y-6">
+          {[
+            { step: '1', title: 'Describe your product', desc: 'A one-liner is enough. "AI resume optimizer for job seekers at $9.99/mo."' },
+            { step: '2', title: 'We research your market', desc: 'Real search data: competitor names, traffic numbers, Reddit discussions, pricing comparisons.' },
+            { step: '3', title: 'Experts analyze & debate', desc: 'Market researcher, economist, social media expert — they argue about YOUR best strategy.' },
+            { step: '4', title: 'Get your playbook', desc: 'Not "try Reddit." Instead: "Post in r/cscareerquestions Tuesday 9am with this exact title format."' },
+          ].map((item, i) => (
+            <div key={i} className="flex gap-4 items-start">
+              <div className="w-8 h-8 rounded-full bg-brand/10 flex items-center justify-center text-sm font-bold text-brand shrink-0 mt-0.5">
+                {item.step}
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-primary mb-1">{item.title}</h3>
+                <p className="text-sm text-secondary leading-relaxed">{item.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Expert team */}
+      <section className="max-w-3xl mx-auto px-6 pb-20">
+        <h2 className="text-2xl font-bold text-primary text-center mb-3">Your growth team</h2>
+        <p className="text-sm text-secondary text-center mb-8 max-w-md mx-auto">
+          You hear one voice. Behind it, 13 specialists are working.
+        </p>
+        <div className="flex flex-wrap justify-center gap-3">
+          {Object.entries(EXPERTS).map(([key, expert]) => (
+            <div key={key} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-[var(--bg-card)] shadow-sm">
+              <img src={expert.avatar} alt={expert.short} className="w-6 h-6 rounded-full object-cover" />
+              <span className="text-xs font-medium text-primary">{expert.short}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Not another ChatGPT wrapper */}
+      <section className="max-w-2xl mx-auto px-6 pb-20">
+        <div className="p-6 rounded-xl border border-border bg-[var(--bg-card)] shadow-sm">
+          <h3 className="text-base font-semibold text-primary mb-3">Not another ChatGPT wrapper</h3>
+          <div className="space-y-3 text-sm text-secondary leading-relaxed">
+            <p>
+              <span className="text-muted">ChatGPT:</span> "You should try Reddit marketing and consider SEO for long-term growth."
+            </p>
+            <p>
+              <span className="text-brand font-medium">CrabRes:</span> "Your top competitor <strong>Teal.com</strong> gets 4.8M visits/month, 72% from SEO. Reddit <strong>r/resumes</strong> (850K members) has 12 threads asking for AI resume tools this month. Here's your first post, ready to copy-paste."
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="max-w-2xl mx-auto px-6 pb-20 text-center">
+        <h2 className="text-2xl font-bold text-primary mb-4">Ready to grow?</h2>
+        <p className="text-sm text-secondary mb-6">Tell us about your product. We'll start researching in 30 seconds.</p>
         <button onClick={onGetStarted}
-          className="btn-primary !text-base !py-3.5 !px-8 !rounded-xl shadow-lg">
-          Start free →
+          className="text-base font-medium text-white bg-brand hover:bg-brand-hover px-8 py-3.5 rounded-xl transition-all shadow-md hover:shadow-lg">
+          Start free
         </button>
       </section>
 
       {/* Footer */}
-      <footer className="text-center py-8 border-t border-border relative z-10">
-        <p className="text-xs text-muted">CrabRes · © {new Date().getFullYear()} · Privacy · Terms</p>
+      <footer className="border-t border-border py-6 text-center">
+        <p className="text-xs text-muted">CrabRes &middot; &copy; {new Date().getFullYear()} &middot; 13 AI experts &middot; 3 deep channels</p>
       </footer>
-    </div>
-  )
-}
-
-function FaqItem({ q, a }: { q: string; a: string }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="card overflow-hidden">
-      <button onClick={() => setOpen(!open)}
-        className="w-full p-4 text-left flex items-center justify-between hover:bg-hover transition-colors">
-        <span className="text-sm font-heading font-medium text-primary pr-4">{q}</span>
-        <span className="text-muted text-sm shrink-0">{open ? '−' : '+'}</span>
-      </button>
-      {open && (
-        <div className="px-4 pb-4 text-sm text-secondary leading-relaxed animate-fade-in">
-          {a}
-        </div>
-      )}
     </div>
   )
 }

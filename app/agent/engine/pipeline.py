@@ -67,7 +67,14 @@ class PipelineRunner:
         self.memory = memory
         self._language = "en"
 
-        # 加载持久化状态
+        # Mood Sensing
+        from app.agent.engine.mood_sensing import MoodSensor
+        self.mood_sensor = MoodSensor()
+
+        # Deep Strategy
+        from app.agent.engine.deep_strategy import get_deep_strategy_engine
+        self.deep_strategy = get_deep_strategy_engine()
+
         from pathlib import Path
         workspace_base = Path(str(memory.base_dir)).parent / "workspace"
         workspace_base.mkdir(parents=True, exist_ok=True)
@@ -81,7 +88,35 @@ class PipelineRunner:
         msg = user_message.strip()
         msg_lower = msg.lower()
 
-        # ========== 快速路径（不走流水线）==========
+        # ========== Deep Strategy 检测 ==========
+        from app.agent.engine.deep_strategy import should_trigger_deep_strategy
+        if should_trigger_deep_strategy(msg):
+            yield {"type": "status", "content": "Launching deep strategy session..."}
+            try:
+                job = await self.deep_strategy.create_job(
+                    user_id=str(self.memory.base_dir).split("/")[-1],
+                    session_id=self.state.session_id,
+                    request=msg,
+                    llm_service=self.llm,
+                    tool_registry=self.tools,
+                    expert_pool=self.experts,
+                    memory=self.memory,
+                )
+                reply = f"Deep Strategy session launched (ID: {job.id}). I'm running a full 8-expert roundtable in the background. This takes 2-5 minutes — I'll notify you when it's ready."
+                yield {"type": "message", "content": reply}
+                self.state.message_history.append({"role": "assistant", "content": reply})
+                return
+            except Exception as e:
+                logger.warning(f"Deep Strategy failed: {e}")
+
+        # ========== Mood Sensing ==========
+        mood_signal = self.mood_sensor.detect(msg)
+        self._mood_injection = ""
+        if mood_signal:
+            self._mood_injection = self.mood_sensor.get_prompt_injection(mood_signal)
+            logger.info(f"Mood: {mood_signal.mood.value} ({mood_signal.confidence:.2f})")
+
+        # ========== 快速路径 ==========
 
         # 1. 自我认知——硬编码，0 token
         if self._is_self_awareness_question(msg_lower):
@@ -347,14 +382,19 @@ class PipelineRunner:
         response = await self.llm.generate(
             system_prompt=f"""You are CrabRes, an AI growth agent. Respond ONLY in {lang}.
 
-You have research data and expert analysis. Synthesize into a helpful, natural response.
+You have research data and expert opinions. Write a response like you're talking to a friend who asked for help.
 
-Rules:
-- Be natural, like Claude. NOT a template. NOT "Phase 1 / Phase 2 / Phase 3".
-- Cite specific data from research (competitor names, numbers, subreddits).
-- Include ONE hard truth the user needs to hear.
-- Keep it actionable — what should they do THIS WEEK?
-- Match response length to the complexity. Don't pad.""",
+STRICT FORMAT RULES:
+- Do NOT use ### headers or numbered sections like "1. Strategy A", "2. Strategy B"
+- Do NOT use phrases like "Actionable Growth Strategy" or "Key Findings" or "Conclusion"
+- Write in natural paragraphs, like Claude or a smart friend would
+- Use **bold** only for competitor names and key numbers, not for section titles
+- Start with the most important insight, not a summary header
+- Include ONE hard truth — something uncomfortable but true
+- End with 2-3 specific things to do THIS WEEK (not a numbered list of 10)
+- Total length: 3-5 paragraphs. Not more.
+
+{getattr(self, '_mood_injection', '')}""",
             messages=[{
                 "role": "user",
                 "content": f"Product: {json.dumps(product_info, ensure_ascii=False, default=str)[:600]}\n\nResearch:\n{research_summary}\n\nExpert analysis:\n{expert_summary}\n\nSynthesize a growth strategy.",
@@ -431,9 +471,13 @@ Be brief and natural. 3-5 paragraphs max.""",
         response = await self.llm.generate(
             system_prompt=f"""You are CrabRes, an AI growth agent. Respond in {lang}.
 
-The user is following up on a previous analysis. Use the existing research and expert data to answer their question or incorporate their new information.
+The user is following up on a previous analysis. Use the existing data to answer.
 
-Be concise and natural. If they gave a constraint (like "no budget"), adjust the previous advice accordingly. Don't repeat everything — just address what changed.""",
+Rules:
+- Be concise and conversational, like a smart friend
+- If they gave a constraint (like "no budget"), adjust advice — don't repeat everything
+- No headers, no numbered lists of 10 items
+- 2-3 focused paragraphs max""",
             messages=[
                 {"role": "user", "content": f"Previous research data:\n{research_brief[:1500]}\n\nPrevious expert analysis:\n{expert_brief[:1500]}"},
                 {"role": "assistant", "content": "I have the context from our previous analysis."},
