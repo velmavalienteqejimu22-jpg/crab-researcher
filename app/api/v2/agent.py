@@ -17,7 +17,8 @@ from pydantic import BaseModel
 
 from app.core.security import get_current_user
 from app.agent.engine.llm_adapter import AgentLLM
-from app.agent.engine.loop import AgentLoop, LoopState
+from app.agent.engine.pipeline import PipelineRunner
+from app.agent.engine.loop import AgentLoop, LoopState  # 保留兼容
 from app.agent.tools import ToolRegistry
 from app.agent.tools.research import WebSearchTool, ScrapeWebsiteTool, SocialSearchTool, CompetitorAnalyzeTool, DeepScrapeTool
 from app.agent.tools.actions import WritePostTool, WriteEmailTool, SubmitToDirectoryTool, SetActiveCampaignTool
@@ -132,24 +133,24 @@ async def agent_chat(
         experts = _get_or_create_experts()
         experts.set_llm(llm)
         memory = GrowthMemory(base_dir=f".crabres/memory/{user_id}")
-        loop = AgentLoop(
+        runner = PipelineRunner(
             session_id=session_id, llm_service=llm,
             tool_registry=tools, expert_pool=experts, memory=memory,
         )
-        _sessions[session_id] = loop
+        _sessions[session_id] = runner
         _session_owners[session_id] = user_id
 
-    loop = _sessions[session_id]
+    runner = _sessions[session_id]
     _session_last_active[session_id] = __import__('time').time()
 
     outputs: list[ChatResponse] = []
-    async for event in loop.run(req.message, language=req.language):
+    async for event in runner.run(req.message, language=req.language):
         outputs.append(ChatResponse(
             session_id=session_id,
             type=event.get("type", "message"),
             content=event.get("content", ""),
             expert_id=event.get("expert_id"),
-            pending_tasks=loop.state.pending_user_tasks,
+            pending_tasks=[],
         ))
 
     if not outputs:
@@ -166,12 +167,7 @@ async def agent_chat_stream(
     req: ChatRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """
-    SSE 流式聊天 — 每个事件立即推送给前端
-    
-    前端用 EventSource 或 fetch + ReadableStream 接收。
-    每行格式: data: {"type":"status","content":"Researching...","session_id":"xxx"}
-    """
+    """SSE 流式聊天"""
     session_id = req.session_id or str(uuid.uuid4())
     user_id = current_user.get('user_id', 0)
 
@@ -186,19 +182,19 @@ async def agent_chat_stream(
         experts = _get_or_create_experts()
         experts.set_llm(llm)
         memory = GrowthMemory(base_dir=f".crabres/memory/{user_id}")
-        loop = AgentLoop(
+        runner = PipelineRunner(
             session_id=session_id, llm_service=llm,
             tool_registry=tools, expert_pool=experts, memory=memory,
         )
-        _sessions[session_id] = loop
+        _sessions[session_id] = runner
         _session_owners[session_id] = user_id
 
-    loop = _sessions[session_id]
+    runner = _sessions[session_id]
     _session_last_active[session_id] = __import__('time').time()
 
     async def event_generator():
         try:
-            async for event in loop.run(req.message, language=req.language):
+            async for event in runner.run(req.message, language=req.language):
                 data = json.dumps({
                     "session_id": session_id,
                     "type": event.get("type", "message"),
