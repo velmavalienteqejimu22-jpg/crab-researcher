@@ -203,6 +203,15 @@ class PipelineRunner:
         yield {"type": "message", "content": response}
         self.state.message_history.append({"role": "assistant", "content": response})
 
+        # Step 5: DELIVER — 生成可交付物，保存到 workspace
+        if len(useful if 'useful' in dir() else []) >= 2 or len(self.state.research_data) > 0:
+            yield {"type": "status", "content": "Preparing deliverables..."}
+            deliverables = await self._step_deliver(self.state.product_info, self.state.research_data, response)
+            if deliverables:
+                # 告诉用户生成了什么
+                files_msg = "\n".join(f"- {d['name']}: {d['desc']}" for d in deliverables)
+                yield {"type": "message", "content": f"I've prepared these for you:\n\n{files_msg}\n\nYou can find them in your workspace."}
+
         # 持久化
         await self._persist()
 
@@ -366,8 +375,9 @@ class PipelineRunner:
         return expert_results, events
 
     async def _step_respond(self, product_info: dict, useful_results: list, expert_analysis: dict) -> str:
-        """Step 4: 综合输出（有专家数据）"""
+        """Step 4: 综合输出（有专家数据 + 知识驱动的渠道建议）"""
         from app.agent.engine.llm_adapter import TaskTier
+        from app.agent.knowledge.channel_playbooks import get_actionable_advice
 
         lang = "Chinese" if self._language == "zh" else "English"
         research_summary = "\n".join(
@@ -378,6 +388,11 @@ class PipelineRunner:
             f"### {eid}\n{output[:1000]}"
             for eid, output in expert_analysis.items()
         )
+        
+        # 🔥 知识注入：基于产品类型的具体渠道建议
+        product_type = product_info.get("type", "default")
+        budget = product_info.get("budget", "")
+        channel_advice = get_actionable_advice(product_type, budget)
 
         response = await self.llm.generate(
             system_prompt=f"""You are CrabRes, an AI growth agent. Respond ONLY in {lang}.
@@ -397,7 +412,7 @@ STRICT FORMAT RULES:
 {getattr(self, '_mood_injection', '')}""",
             messages=[{
                 "role": "user",
-                "content": f"Product: {json.dumps(product_info, ensure_ascii=False, default=str)[:600]}\n\nResearch:\n{research_summary}\n\nExpert analysis:\n{expert_summary}\n\nSynthesize a growth strategy.",
+                "content": f"Product: {json.dumps(product_info, ensure_ascii=False, default=str)[:600]}\n\nResearch:\n{research_summary}\n\nExpert analysis:\n{expert_summary}\n\nChannel-specific playbooks (use these specific tactics, don't generalize):\n{channel_advice}\n\nSynthesize into a natural, conversational growth strategy. Reference the specific channel tactics above.",
             }],
             tier=TaskTier.CRITICAL,
             max_tokens=4096,
@@ -429,6 +444,88 @@ Be brief and natural. 3-5 paragraphs max.""",
             max_tokens=1500,
         )
         return response.content
+
+    async def _step_deliver(self, product_info: dict, research_data: list, strategy_response: str) -> list:
+        """
+        Step 5: DELIVER — 生成可交付物并保存到 workspace
+        
+        这是"做事"和"说话"的区别。
+        不只是告诉用户"去 Reddit 发帖"，而是直接写好帖子。
+        """
+        from app.agent.engine.llm_adapter import TaskTier
+        from pathlib import Path
+
+        workspace = Path(str(self.memory.base_dir)).parent / "workspace"
+        workspace.mkdir(parents=True, exist_ok=True)
+        for sub in ["drafts", "reports", "plans"]:
+            (workspace / sub).mkdir(exist_ok=True)
+
+        deliverables = []
+        lang = "Chinese" if self._language == "zh" else "English"
+        product_name = product_info.get("name", "product")
+        product_desc = json.dumps(product_info, ensure_ascii=False, default=str)[:500]
+
+        # 1. 竞品分析报告
+        research_text = "\n".join(
+            f"- {r.get('query','')}: {json.dumps(r.get('result',{}), ensure_ascii=False, default=str)[:600]}"
+            for r in research_data[:5] if r.get("useful")
+        )
+        if research_text:
+            try:
+                report = await self.llm.generate(
+                    system_prompt=f"""Generate a competitor analysis report in {lang}. Be specific — use real names, numbers, URLs from the research data. Format as clean markdown. Include: competitor names, their pricing, traffic estimates, strengths, weaknesses, and gaps we can exploit. 500-800 words.""",
+                    messages=[{"role": "user", "content": f"Product: {product_desc}\n\nResearch data:\n{research_text}"}],
+                    tier=TaskTier.THINKING,
+                    max_tokens=1500,
+                )
+                path = workspace / "reports" / f"competitor_analysis_{product_name.lower().replace(' ','_')}.md"
+                path.write_text(f"# Competitor Analysis: {product_name}\n\n{report.content}", encoding="utf-8")
+                deliverables.append({"name": f"Competitor Analysis", "desc": f"reports/{path.name}", "path": str(path)})
+            except Exception as e:
+                logger.warning(f"Failed to generate competitor report: {e}")
+
+        # 2. 第一篇 Reddit/X 帖子草稿
+        try:
+            draft = await self.llm.generate(
+                system_prompt=f"""Write a ready-to-post social media draft in {lang}. 
+
+Write TWO versions:
+1. A Reddit post for a relevant subreddit (title + body, genuine tone, NOT promotional)
+2. A Twitter/X thread (hook tweet + 3-5 follow-up tweets)
+
+Use the product info and strategy to make it specific. Include the actual product name. The Reddit post should sound like a real person sharing their experience, NOT an ad.""",
+                messages=[{"role": "user", "content": f"Product: {product_desc}\n\nStrategy context: {strategy_response[:800]}"}],
+                tier=TaskTier.WRITING,
+                max_tokens=1200,
+            )
+            path = workspace / "drafts" / f"first_posts_{product_name.lower().replace(' ','_')}.md"
+            path.write_text(f"# Content Drafts: {product_name}\n\n{draft.content}", encoding="utf-8")
+            deliverables.append({"name": "Content Drafts (Reddit + X)", "desc": f"drafts/{path.name}", "path": str(path)})
+        except Exception as e:
+            logger.warning(f"Failed to generate content drafts: {e}")
+
+        # 3. 30 天增长计划
+        try:
+            plan = await self.llm.generate(
+                system_prompt=f"""Create a 30-day growth plan in {lang}. 
+
+Format: Week 1 / Week 2 / Week 3 / Week 4, each with 3-4 specific daily/weekly tasks.
+Be very specific: which platform, what type of content, what time to post, what metrics to track.
+Base it on the strategy and research data provided.""",
+                messages=[{"role": "user", "content": f"Product: {product_desc}\n\nStrategy: {strategy_response[:800]}"}],
+                tier=TaskTier.THINKING,
+                max_tokens=1500,
+            )
+            path = workspace / "plans" / f"30day_growth_{product_name.lower().replace(' ','_')}.md"
+            path.write_text(f"# 30-Day Growth Plan: {product_name}\n\n{plan.content}", encoding="utf-8")
+            deliverables.append({"name": "30-Day Growth Plan", "desc": f"plans/{path.name}", "path": str(path)})
+        except Exception as e:
+            logger.warning(f"Failed to generate growth plan: {e}")
+
+        if deliverables:
+            logger.info(f"Delivered {len(deliverables)} files to workspace")
+
+        return deliverables
 
     # ========== 工具与专家执行 ==========
 

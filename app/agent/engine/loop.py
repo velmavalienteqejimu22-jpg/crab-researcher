@@ -260,7 +260,76 @@ class AgentLoop:
 
         iteration = 0
         tool_call_count = 0  # 追踪工具调用次数
-        
+
+        # ========== 主动搜索层（不等 LLM 决定）==========
+        # 如果检测到产品信息，直接启动搜索，不让 Coordinator 有机会选择 ask_user
+        if has_product_info and not context.get("tool_results"):
+            yield {"type": "status", "content": "Researching your product market..."}
+
+            # 构建搜索查询
+            search_query = user_message[:120]
+            # 如果用户提到了竞品，搜索竞品
+            competitor_keywords = ['竞品', '竞争', 'competitor', 'competing', 'rival', 'alternative', 'vs']
+            is_competitor_mention = any(kw in msg_lower for kw in competitor_keywords)
+
+            if is_competitor_mention:
+                # 提取竞品名（取掉竞品关键词后的实体词）
+                import re as _re
+                # 去掉常见修饰词，剩下的就是竞品名
+                competitor_name = _re.sub(
+                    r'(是|竞品|竞争对手|对手|competitor|is a|is my|the)', '',
+                    user_message, flags=_re.IGNORECASE
+                ).strip()
+                if competitor_name:
+                    search_query = f"{competitor_name} product features pricing reviews"
+
+            # 执行预搜索
+            pre_search_action = AgentAction(
+                type=ActionType.TOOL_CALL,
+                content="Pre-research: searching product market",
+                tool_name="web_search",
+                tool_args={"query": search_query, "num_results": 5},
+            )
+            pre_result = await self._execute_tool(pre_search_action)
+            context = await self._incorporate_result(context, pre_search_action, pre_result)
+            result_summary = json.dumps(pre_result, ensure_ascii=False, default=str)[:2000]
+            self._message_history.append({
+                "role": "assistant",
+                "content": f"[Tool: web_search] Result: {result_summary}",
+            })
+            tool_call_count += 1
+            self.state.actions_history.append(pre_search_action)
+
+            # 如果是竞品查询且找到了URL，自动 scrape 竞品网站
+            if is_competitor_mention and pre_result and isinstance(pre_result, dict):
+                results = pre_result.get("results", [])
+                if results and results[0].get("url"):
+                    competitor_url = results[0]["url"]
+                    yield {"type": "status", "content": f"Analyzing competitor: {competitor_url[:60]}..."}
+                    scrape_action = AgentAction(
+                        type=ActionType.TOOL_CALL,
+                        content="Scraping competitor website",
+                        tool_name="scrape_website",
+                        tool_args={"url": competitor_url},
+                    )
+                    scrape_result = await self._execute_tool(scrape_action)
+                    context = await self._incorporate_result(context, scrape_action, scrape_result)
+                    scrape_summary = json.dumps(scrape_result, ensure_ascii=False, default=str)[:2000]
+                    self._message_history.append({
+                        "role": "assistant",
+                        "content": f"[Tool: scrape_website] Result: {scrape_summary}",
+                    })
+                    tool_call_count += 1
+                    self.state.actions_history.append(scrape_action)
+                    if competitor_url:
+                        self._scraped_urls.add(competitor_url)
+
+            # 自动提取并保存竞品到记忆（不依赖 LLM，从搜索结果中提取）
+            await self._auto_save_competitors_from_results(context)
+
+            logger.info(f"Proactive search completed: {tool_call_count} tool calls before Coordinator")
+        # ========== 主动搜索层结束 ==========
+
         while self._running and iteration < self._max_loop_iterations:
             iteration += 1
             try:
@@ -291,11 +360,12 @@ class AgentLoop:
 
                 # ========== 硬编码决策拦截层 ==========
                 
-                # 拦截 1: 连续 ask_user 超过 1 次 → 强制切到 research 或 output
+                # 拦截 1: ask_user — 如果有产品信息，第一次就拦截，不允许任何 ask
                 if decision.type == ActionType.ASK_USER:
                     self._ask_count += 1
-                    if self._ask_count > 1 and (has_product_info or has_product_in_memory):
-                        logger.info(f"OVERRIDE: ask_count={self._ask_count}, has product info → forcing web_search")
+                    if has_product_info or has_product_in_memory:
+                        # 有产品信息就不该问 — 立刻强制搜索
+                        logger.info(f"OVERRIDE: ask blocked (has product info), forcing web_search")
                         product_desc = user_message if has_product_info else product_in_memory.get("raw_description", "")
                         decision = AgentAction(
                             type=ActionType.TOOL_CALL,
@@ -303,13 +373,14 @@ class AgentLoop:
                             tool_name="web_search",
                             tool_args={"query": f"{product_desc[:100]} competitors market analysis"},
                         )
-                    elif self._ask_count > 2:
-                        # 问了 3 次还没产品信息，给个兜底回复
-                        logger.info("OVERRIDE: ask_count > 2 without product info → giving helpful output")
-                        decision = AgentAction(
-                            type=ActionType.OUTPUT,
-                            content="I need to know what you're building to help. Just give me a one-liner like 'AI resume tool for job seekers' and I'll start researching immediately.",
-                        )
+                    elif self._ask_count > 1:
+                        # 没有产品信息，但已经问过一次了 — 不再问，给兜底回复
+                        logger.info("OVERRIDE: ask_count > 1 without product info → giving helpful output")
+                        lang = getattr(self, '_language', 'en')
+                        msg = ("告诉我你在做什么产品就行，一句话就够。比如'帮独立开发者增长的AI工具'，我立刻开始研究。"
+                               if lang == "zh" else
+                               "Just tell me what you're building — even one sentence like 'AI resume tool for job seekers'. I'll start researching immediately.")
+                        decision = AgentAction(type=ActionType.OUTPUT, content=msg)
                 else:
                     self._ask_count = 0  # 不是 ask → 重置计数
                 
@@ -627,22 +698,33 @@ class AgentLoop:
 ## CRITICAL LANGUAGE RULE
 **You MUST respond ONLY in {lang_rule}.** No exceptions. No mixing languages.
 
-## CONVERSATION STYLE (THIS IS THE MOST IMPORTANT RULE)
-**Be like Claude. Be warm, concise, and helpful.**
+## RULE #1: RESEARCH FIRST, ASK NEVER (THIS IS THE MOST IMPORTANT RULE)
 
-- Greeting/short message → 1-2 sentences. "Hey! Tell me what you're building and I'll start researching." Done.
-- User gives product info → Immediately start researching with tools. Don't ask 5 follow-up questions.
-- You need info → Ask ONE question that covers everything: "What's the product, who's it for, and what's your growth goal? A one-liner is enough."
-- NEVER ask more than ONE question per turn. NEVER chain questions.
+**If the user gives you ANY information about their product — even a single sentence — you MUST call web_search or social_search IMMEDIATELY.** Do NOT ask follow-up questions first. Do NOT say "Could you tell me more about...". Do NOT list questions for the user to answer.
+
+Examples of messages where you MUST search immediately (not ask):
+- "帮助vibecoder增长的营销产品" → search "vibecoder growth marketing tools competitors"
+- "accio是竞品" → search "accio AI product" + scrape accio's website
+- "AI resume tool, $9.99/mo" → search "AI resume tool competitors market size"
+- "我做了一个帮独立开发者的工具" → search "indie developer tools market competitors"
+
+The ONLY time you may use ask_user: the message is a pure greeting with ZERO product context (just "hi" or "hello").
+
+**Anti-patterns (instant failure — if you do any of these, you have failed):**
+- ❌ Asking "Could you provide more details about X?" when you could search instead
+- ❌ Listing 3-5 questions for the user to answer
+- ❌ Saying "I need more information" when the user already gave you a product description
+- ❌ Repeating back what the user said instead of researching it
+- ❌ Outputting strategy without first using search tools
+
+## CONVERSATION STYLE
+**Be like a coworker, not a consultant. Be warm, concise, direct.**
+
+- Greeting with no product context → 1-2 sentences. "Hey! What are you building?" Done.
+- User gives ANY product info → Start researching. Show results. Then ask follow-ups if needed.
+- NEVER ask more than ONE question per turn.
 - NEVER repeat what the user already told you.
-- NEVER output a long strategy without first doing real research with tools.
-- If user says something vague → give a brief helpful response + ONE clarifying question. Not an essay.
-
-**Anti-patterns (instant failure):**
-- ❌ Asking 3+ questions in one message
-- ❌ Outputting strategy without research data
-- ❌ Saying "Could you provide more details about X?" (too formal, too cold)
-- ❌ Not knowing you are CrabRes when asked
+- It's ALWAYS better to search with incomplete info than to ask for more info.
 
 ## TRUST LEVEL: {trust_level_name}
 {"- You CAN auto-execute research without asking." if auto_research else "- Ask user before executing any strategy."}
@@ -661,17 +743,18 @@ You lead a team of 13 specialized experts. Your job is NOT just to give advice. 
 - **RESEARCH FIRST**: Before any recommendation, you MUST use tools to research.
 - **THINK LIKE A DETECTIVE**: Use specific links and data, not generic consultant talk.
 
-Step 1: If you don't know the product well → ask_user for key details
-Step 2: RESEARCH (mandatory — use at least 2 tools before any strategy)
-  - Search competitors: web_search
-  - Find target users: social_search
-  - Analyze competitor sites: competitor_analyze or scrape_website
-Step 3: ROUNDTABLE (use consult_roundtable, NOT consult_expert)
+Step 1: RESEARCH IMMEDIATELY (mandatory — use at least 2 tools before anything else)
+  - Search competitors: web_search("{product} competitors market analysis")
+  - If user named a competitor: scrape_website or competitor_analyze on that competitor
+  - Find target users: social_search("{product} discussions", platforms=["reddit", "x", "hackernews"])
+  - You MUST do this step even if user gave minimal info. Search with what you have.
+Step 2: ROUNDTABLE (use consult_roundtable, NOT consult_expert)
   - Pick 2-4 relevant experts based on the research findings
   - Example: for a SaaS product → market_researcher + economist + social_media + psychologist
   - The experts will analyze in parallel and debate each other
   - You will then synthesize their outputs into a unified strategy
-Step 4: Output the final plan with ALL content written
+Step 3: Output the final plan with ALL content written
+Step 4: ONLY if you truly lack ALL context (user said just "hi") → ask ONE question: "What are you building?"
 
 ## CRITICAL RULE: USE ROUNDTABLE
 
@@ -714,22 +797,24 @@ Turn: {self.state.turn_count}
 
 ## CRITICAL RULES
 
-### Rule 1: CONVERSATION STYLE (like Claude, not like a consultant)
+### Rule 1: CONVERSATION STYLE (like a coworker, not a consultant)
 - **Be concise.** Match the length of your response to the complexity of the question.
 - If the user says "hi" or a short greeting → respond in 1-2 sentences max. Be warm, be brief.
-- If the user asks a simple question → give a short answer. Not every response needs to be a essay.
-- Only write long responses when the user provides real product details AND asks for strategy.
+- Only write long responses when you have real research data to present.
 - NEVER dump a wall of text on a user who hasn't given you product information yet.
 
-### Rule 2: WHEN TO RESEARCH vs WHEN TO ASK
-- If user provides ANY product description (even just "AI resume tool") → RESEARCH IMMEDIATELY with tools. Don't ask more questions first.
-- If user's message is truly empty (just "hi" or greeting) → respond warmly and ask ONE question: "What are you building? Even a one-liner works."
-- NEVER ask more than ONE follow-up question per turn.
-- NEVER ask about pricing, target audience, budget separately — get what you can and start working.
-- It's better to research with incomplete info than to keep asking questions.
-- You can always ask follow-up questions AFTER showing initial research results.
+### Rule 2: ALWAYS SEARCH BEFORE ASKING (reinforcement of Rule #1)
+- If user mentions ANY product, tool, competitor, or market → SEARCH IMMEDIATELY. Do NOT ask first.
+- You can ask follow-up questions AFTER showing research results — never before.
+- NEVER ask about pricing, target audience, budget separately — search with what you have.
 
-### Rule 3: EXPERT USAGE
+### Rule 3: COMPETITOR TRACKING (CRITICAL)
+- When you discover competitors through research, ALWAYS call save_competitors to persist them.
+- The Growth Daemon will then automatically monitor these competitors every 30 minutes.
+- Include name, url, description, and pricing (if known) for each competitor.
+- This is how CrabRes becomes a real agent — continuous monitoring, not one-time research.
+
+### Rule 4: EXPERT USAGE
 - Do NOT call experts or roundtable until you have product info AND research data.
 - If someone @mentions an expert without context, the expert should ask what product they're working on — not generate a generic analysis.
 
@@ -1232,40 +1317,146 @@ The user came here because they're tired of generic advice. Show them what real 
             "timestamp": time.time(),
         })
 
+    async def _auto_save_competitors_from_results(self, context: dict):
+        """
+        从搜索结果中自动提取竞品并保存到记忆。
+
+        不用 LLM — 直接从搜索结果的 title/url 中提取。
+        Daemon 会用这些数据做持续监控。
+        """
+        tool_results = context.get("tool_results", [])
+        if not tool_results:
+            return
+
+        competitors = []
+        seen_domains = set()
+
+        for tr in tool_results:
+            result = tr.get("result", {})
+            if not isinstance(result, dict):
+                continue
+            # 从 web_search / social_search 结果中提取
+            for r in result.get("results", []):
+                url = r.get("url", "")
+                title = r.get("title", "")
+                content = r.get("content", "")
+                if not url:
+                    continue
+
+                # 提取域名
+                try:
+                    from urllib.parse import urlparse
+                    domain = urlparse(url).netloc.replace("www.", "")
+                except Exception:
+                    continue
+
+                # 跳过搜索引擎、社交平台、通用网站
+                skip_domains = {
+                    "google.com", "bing.com", "reddit.com", "twitter.com", "x.com",
+                    "youtube.com", "linkedin.com", "facebook.com", "instagram.com",
+                    "github.com", "medium.com", "quora.com", "wikipedia.org",
+                    "news.ycombinator.com", "producthunt.com", "crunchbase.com",
+                    "techcrunch.com", "forbes.com", "bloomberg.com",
+                    "futurepedia.io", "alternativeto.net", "g2.com", "capterra.com",
+                }
+                if any(skip in domain for skip in skip_domains):
+                    continue
+
+                if domain in seen_domains:
+                    continue
+                seen_domains.add(domain)
+
+                # 从 title 中提取产品名（取第一个 - 或 | 之前的部分）
+                name = title.split(" - ")[0].split(" | ")[0].split(" — ")[0].strip()
+                if len(name) > 50:
+                    name = name[:50]
+
+                competitors.append({
+                    "name": name,
+                    "url": f"https://{domain}",
+                    "description": content[:200] if content else title,
+                })
+
+        if competitors:
+            # 保存到记忆
+            existing = await self.memory.load("competitors", category="research")
+            if not isinstance(existing, list):
+                existing = []
+
+            existing_urls = {c.get("url", "").lower() for c in existing}
+            new_comps = []
+            for c in competitors[:5]:  # 最多自动添加 5 个
+                if c["url"].lower() not in existing_urls:
+                    c["discovered_at"] = time.time()
+                    c["status"] = "active"
+                    c["source"] = "auto_discovery"
+                    new_comps.append(c)
+
+            if new_comps:
+                existing.extend(new_comps)
+                await self.memory.save("competitors", existing, category="research")
+                logger.info(f"Auto-discovered {len(new_comps)} competitors: {[c['name'] for c in new_comps]}")
+
     def _detect_product_info(self, message: str) -> bool:
         """
         硬编码检测：用户消息是否包含足够的产品信息可以开始研究
-        
+
         不靠 LLM 判断，用关键词启发式。
         只要检测到产品描述就返回 True，Agent 应该立即 research。
+        宁可误判为 True（多搜一次），也不要误判为 False（多问一次）。
         """
         msg = message.lower()
-        # 长度检测：超过 30 字且不是纯问候
-        if len(msg) < 30:
+
+        # 纯问候过滤（只过滤极短的纯问候）
+        greetings = ['hi', 'hello', 'hey', '你好', '嗨', 'yo', 'sup']
+        if msg.strip() in greetings:
             return False
-        
-        # 产品描述关键词（任一命中）
+
+        # 竞品/对手信号（短消息也算 — "accio是竞品" 只有 6 个字但信息充分）
+        competitor_signals = [
+            '竞品', '竞争对手', '对手', '竞争者', '类似的产品', '类似产品',
+            'competitor', 'competing', 'rival', 'alternative', 'vs ', ' vs',
+            '比较', '对比',
+        ]
+        if any(kw in msg for kw in competitor_signals):
+            return True
+
+        # 产品描述关键词（任一命中，无最小长度要求）
         product_signals = [
             'my product', 'i built', 'i made', "i'm building", 'i have a',
             "it's a", 'it is a', 'we built', 'our product', 'we made',
+            'i run', 'i created', 'working on', 'building a', 'launched',
             '我的产品', '我做了', '我们做了', '我在做', '我开发了',
-            'saas', 'app', 'tool', 'platform', 'service', 'marketplace',
-            'helps', 'for users', 'for developers', 'for teams',
-            '$', '/mo', '/month', 'pricing', 'free', 'freemium',
-            'users', 'customers', 'target', 'audience',
-            'growth', 'marketing', 'launch', 'mvp',
-            '帮助', '用户', '增长', '营销', '独立开发',
-            # CrabRes 自身
-            'crabres', 'ai growth agent',
+            '我做的', '正在做', '在开发', '做了一个', '上线了',
         ]
-        
         if any(kw in msg for kw in product_signals):
             return True
-        
+
+        # 产品类型信号（需要 >10 chars 避免误判）
+        if len(msg) > 10:
+            type_signals = [
+                'saas', 'app', 'tool', 'platform', 'service', 'marketplace',
+                'plugin', 'extension', 'bot', 'agent', 'api',
+                'helps', 'for users', 'for developers', 'for teams',
+                '$', '/mo', '/month', 'pricing', 'free', 'freemium',
+                'users', 'customers', 'target', 'audience',
+                'growth', 'marketing', 'launch', 'mvp',
+                '帮助', '用户', '增长', '营销', '独立开发', '产品',
+                'vibecoder', 'indie', 'hacker', 'startup', 'founder',
+                'crabres', 'ai growth agent',
+            ]
+            if any(kw in msg for kw in type_signals):
+                return True
+
         # URL 检测
-        if 'http' in msg or '.com' in msg or '.io' in msg or '.app' in msg:
+        if 'http' in msg or '.com' in msg or '.io' in msg or '.app' in msg or '.ai' in msg:
             return True
-        
+
+        # 如果消息超过 20 字且不是纯问句，倾向于当作产品描述
+        # （用户来 CrabRes 就是为了谈产品，不是闲聊）
+        if len(msg) > 20 and not msg.endswith('?') and not msg.endswith('？'):
+            return True
+
         return False
 
     async def _maybe_save_product_info(self, user_message: str):
@@ -1456,7 +1647,7 @@ The user came here because they're tired of generic advice. Show them what real 
             # 直接暴露研究工具（LLM 可以直接调用）
             {
                 "name": "web_search",
-                "description": "Search the internet for global and domestic (China) info. Supports multi-language.",
+                "description": "YOUR DEFAULT ACTION. Search the internet for competitors, market data, trends, product info. Use this BEFORE asking the user any questions. If user mentions any product or competitor name, search it immediately.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -1468,7 +1659,7 @@ The user came here because they're tired of generic advice. Show them what real 
             },
             {
                 "name": "social_search",
-                "description": "Search social media for discussions. Platforms: reddit, x, hackernews, producthunt, linkedin, xiaohongshu, jike, bilibili, zhihu.",
+                "description": "Search social media for user discussions and mentions. Use alongside web_search for comprehensive research. Platforms: reddit, x, hackernews, producthunt, linkedin, xiaohongshu, jike, bilibili, zhihu.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -1539,6 +1730,31 @@ The user came here because they're tired of generic advice. Show them what real 
                 }
             },
             {
+                "name": "publish_post",
+                "description": "Actually publish a post to X/Twitter. Use after write_post to send the content live. Requires Twitter API credentials.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "platform": {"type": "string", "enum": ["x"], "description": "Platform to publish to"},
+                        "text": {"type": "string", "description": "Exact text to publish (max 280 chars for X)"},
+                    },
+                    "required": ["platform", "text"],
+                }
+            },
+            {
+                "name": "twitter_read",
+                "description": "Read real-time data from X/Twitter: search tweets about a topic, get user profile info, or get a user's recent tweets with engagement metrics.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "action": {"type": "string", "enum": ["search_tweets", "user_info", "user_tweets"], "description": "What to do"},
+                        "query": {"type": "string", "description": "Search query or @username"},
+                        "max_results": {"type": "integer", "description": "Max results (10-100)"},
+                    },
+                    "required": ["action", "query"],
+                }
+            },
+            {
                 "name": "write_email",
                 "description": "Write a personalized outreach email to influencers, partners, or potential users.",
                 "parameters": {
@@ -1590,6 +1806,29 @@ The user came here because they're tired of generic advice. Show them what real 
                 }
             },
             {
+                "name": "save_competitors",
+                "description": "Save discovered competitors for continuous monitoring. After researching competitors, call this to enable Growth Daemon to track them automatically (website changes, pricing, social mentions every 30 min). ALWAYS call this after discovering competitors.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "competitors": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "url": {"type": "string"},
+                                    "description": {"type": "string"},
+                                    "pricing": {"type": "string"},
+                                },
+                                "required": ["name"],
+                            },
+                        },
+                    },
+                    "required": ["competitors"],
+                }
+            },
+            {
                 "name": "set_active_campaign",
                 "description": "Set the current active growth campaign URL (e.g., a Tweet link, Reddit post, or Launch page). This will be pinned to the dashboard for live tracking.",
                 "parameters": {
@@ -1603,7 +1842,7 @@ The user came here because they're tired of generic advice. Show them what real 
             },
             {
                 "name": "ask_user",
-                "description": "Ask the user a question to get information you need.",
+                "description": "LAST RESORT ONLY. Ask the user a question. Use ONLY when the user's message is a pure greeting with zero product context (e.g., just 'hi'). If the user has mentioned ANY product, competitor, or market — use web_search instead of asking. Never ask more than one question.",
                 "parameters": {"type": "object", "properties": {"question": {"type": "string"}}, "required": ["question"]}
             },
             {

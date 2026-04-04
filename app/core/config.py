@@ -70,6 +70,13 @@ class Settings(BaseSettings):
     MONTHLY_BUDGET_PER_USER: float = 100.0
     TOKEN_USAGE_ALERT_THRESHOLD: float = 0.8
 
+    # ========== X/Twitter API（读写帖子）==========
+    TWITTER_API_KEY: Optional[str] = None
+    TWITTER_API_SECRET: Optional[str] = None
+    TWITTER_ACCESS_TOKEN: Optional[str] = None
+    TWITTER_ACCESS_TOKEN_SECRET: Optional[str] = None
+    TWITTER_BEARER_TOKEN: Optional[str] = None
+
     # ========== MCP 客户端（调用外部 MCP 服务器）==========
     MCP_SERVERS: str = ""  # 格式: name1:url1|name2:url2 或留空
 

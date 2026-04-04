@@ -1,14 +1,13 @@
 """
-CrabRes Browser Tool — Agent 的眼睛升级
+CrabRes Browser Tool — Agent 的眼睛
 
 让 Agent 能"看到"网页：
-- 截图（分析竞品落地页设计）
+- 截图 + 多模态 LLM 理解（分析竞品落地页、提取视觉信息）
 - JS 渲染后的内容提取（SPA/动态页面）
 - 页面元数据（title, meta, OG tags）
 - 移动端截图（检查响应式）
 
-这是 Manus 的核心能力之一。
-比 httpx 抓取强在：能处理 JS 渲染、能截图、能看到真实布局。
+比 httpx 抓取强在：能处理 JS 渲染、能截图、能用 LLM "看"页面。
 """
 
 import asyncio
@@ -75,7 +74,7 @@ class BrowseWebsiteTool(BaseTool):
             result_budget=30_000,
         )
 
-    async def execute(self, url: str, screenshot: bool = True, mobile: bool = False, wait_seconds: int = 3) -> Any:
+    async def execute(self, url: str, screenshot: bool = True, mobile: bool = False, wait_seconds: int = 3, analyze: bool = True) -> Any:
         browser = await _get_browser()
         if not browser:
             # 降级到普通 scrape
@@ -150,6 +149,7 @@ class BrowseWebsiteTool(BaseTool):
             }
 
             # 截图
+            screenshot_bytes = None
             if screenshot:
                 screenshot_bytes = await page.screenshot(full_page=False, type="png")
                 # 存到 workspace
@@ -161,11 +161,17 @@ class BrowseWebsiteTool(BaseTool):
                 filepath.write_bytes(screenshot_bytes)
                 result["screenshot_path"] = str(filepath)
                 result["screenshot_size"] = len(screenshot_bytes)
-                # Base64 缩略（给 Agent 看的描述）
                 result["screenshot_note"] = f"Screenshot saved: {filepath} ({len(screenshot_bytes)//1024}KB)"
 
             await context.close()
-            logger.info(f"Browse {url}: title='{title[:50]}', {len(text_content)} chars, screenshot={'yes' if screenshot else 'no'}")
+
+            # 多模态 LLM 理解截图（如果截图成功且 analyze=True）
+            if screenshot_bytes and analyze:
+                visual_analysis = await self._analyze_screenshot(screenshot_bytes, url, title)
+                if visual_analysis:
+                    result["visual_analysis"] = visual_analysis
+
+            logger.info(f"Browse {url}: title='{title[:50]}', {len(text_content)} chars, screenshot={'yes' if screenshot else 'no'}, analyzed={'yes' if screenshot_bytes and analyze else 'no'}")
             return result
 
         except Exception as e:
@@ -182,3 +188,81 @@ class BrowseWebsiteTool(BaseTool):
             result["browse_error"] = str(e)[:200]
             result["note"] = "Playwright failed, fell back to httpx scrape"
             return result
+
+    async def _analyze_screenshot(self, screenshot_bytes: bytes, url: str, title: str) -> Optional[str]:
+        """
+        用多模态 LLM 理解截图内容。
+
+        比解析 HTML 更鲁棒：网页结构会变，但视觉布局相对稳定。
+        能理解：产品定位、定价、CTA 按钮、设计风格、信任信号等。
+        """
+        try:
+            from app.core.config import get_settings
+            settings = get_settings()
+
+            # 用 OpenRouter（支持多模态）或 OpenAI
+            api_key = settings.OPENROUTER_API_KEY or settings.OPENAI_API_KEY
+            if not api_key:
+                return None
+
+            import httpx
+
+            b64_image = base64.b64encode(screenshot_bytes).decode("utf-8")
+
+            # 选择 API 端点
+            if settings.OPENROUTER_API_KEY:
+                api_url = "https://openrouter.ai/api/v1/chat/completions"
+                model = "google/gemini-2.0-flash-001"  # 便宜且支持视觉
+                headers = {
+                    "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
+                    "HTTP-Referer": "https://crabres.com",
+                }
+            else:
+                api_url = "https://api.openai.com/v1/chat/completions"
+                model = "gpt-4o-mini"
+                headers = {"Authorization": f"Bearer {settings.OPENAI_API_KEY}"}
+
+            payload = {
+                "model": model,
+                "max_tokens": 800,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": (
+                                    f"Analyze this screenshot of {url} (title: '{title}'). "
+                                    f"In 3-5 bullet points, describe:\n"
+                                    f"1. What product/service this is\n"
+                                    f"2. Their main value proposition (from the hero section)\n"
+                                    f"3. Pricing if visible\n"
+                                    f"4. Key trust signals (logos, testimonials, numbers)\n"
+                                    f"5. Design quality and overall impression\n"
+                                    f"Be specific and concise."
+                                ),
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/png;base64,{b64_image}",
+                                    "detail": "low",  # 省 token
+                                },
+                            },
+                        ],
+                    }
+                ],
+            }
+
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(api_url, json=payload, headers=headers)
+                resp.raise_for_status()
+                data = resp.json()
+                analysis = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                if analysis:
+                    logger.info(f"Visual analysis complete for {url}: {len(analysis)} chars")
+                return analysis
+
+        except Exception as e:
+            logger.warning(f"Screenshot analysis failed for {url}: {e}")
+            return None

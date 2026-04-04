@@ -1,12 +1,13 @@
 """
 行动类工具 — Agent 帮用户执行增长操作
 
-目前：生成可直接执行的操作指南（文案+步骤）
-未来：集成浏览器自动化（Playwright/Puppeteer）实际操作
+支持两种模式：
+1. 生成模式：返回可直接复制粘贴的文案（所有平台）
+2. 发布模式：生成文案 + 通过 API 发布到平台（目前支持 X/Twitter）
 """
 
 import logging
-from typing import Any
+from typing import Any, Optional
 from . import BaseTool, ToolDefinition
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,42 @@ class WritePostTool(BaseTool):
         }
 
 
+class PublishPostTool(BaseTool):
+    """实际发布帖子到平台（目前支持 X/Twitter）"""
+
+    @property
+    def definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="publish_post",
+            description="Actually publish a post to a platform. Currently supports X/Twitter. Requires platform API credentials. Use write_post first to draft, then publish_post to send.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "platform": {"type": "string", "enum": ["x"], "description": "Platform to publish to"},
+                    "text": {"type": "string", "description": "The exact text to publish"},
+                    "reply_to_id": {"type": "string", "description": "Optional: tweet ID to reply to"},
+                },
+                "required": ["platform", "text"],
+            },
+            concurrent_safe=False,
+            requires_auth=True,
+        )
+
+    async def execute(self, platform: str, text: str, reply_to_id: Optional[str] = None, **kwargs) -> Any:
+        if platform == "x":
+            from app.agent.tools.twitter import TwitterPostTool
+            poster = TwitterPostTool()
+            result = await poster.execute(text=text, reply_to_id=reply_to_id)
+            return result
+        else:
+            return {
+                "status": "unsupported",
+                "platform": platform,
+                "text": text,
+                "note": f"Publishing to {platform} is not yet supported. The draft is preserved above — copy-paste it manually.",
+            }
+
+
 class WriteEmailTool(BaseTool):
     """撰写外联邮件"""
 
@@ -134,6 +171,83 @@ class WriteEmailTool(BaseTool):
             "offer": offer,
             "template": template,
             "instruction": f"Write a personalized email to {recipient_name or 'the recipient'} ({recipient_type}). Context: {context}. Follow the template structure. Output: Subject line + complete email body.",
+        }
+
+
+class SaveCompetitorsTool(BaseTool):
+    """保存发现的竞品到记忆系统，启用 Daemon 持续追踪"""
+
+    def __init__(self, memory=None):
+        self._memory = memory
+
+    @property
+    def definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="save_competitors",
+            description="Save discovered competitors to memory for continuous monitoring by Growth Daemon. Call this after researching competitors. The Daemon will automatically track their website changes, pricing updates, and social mentions every 30 minutes.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "competitors": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string", "description": "Competitor name"},
+                                "url": {"type": "string", "description": "Competitor website URL"},
+                                "description": {"type": "string", "description": "Brief description of what they do"},
+                                "pricing": {"type": "string", "description": "Pricing info if known"},
+                            },
+                            "required": ["name"],
+                        },
+                        "description": "List of competitors to track",
+                    },
+                },
+                "required": ["competitors"],
+            },
+            concurrent_safe=True,
+        )
+
+    async def execute(self, competitors: list, **kwargs) -> Any:
+        if not self._memory:
+            return {"error": "Memory not available", "competitors": competitors}
+
+        # Load existing competitors
+        existing = await self._memory.load("competitors", category="research")
+        if not isinstance(existing, list):
+            existing = []
+
+        # Merge: add new, update existing (by name)
+        existing_names = {c.get("name", "").lower() for c in existing}
+        added = []
+        updated = []
+
+        for comp in competitors:
+            name = comp.get("name", "").strip()
+            if not name:
+                continue
+
+            if name.lower() in existing_names:
+                # Update existing
+                for i, e in enumerate(existing):
+                    if e.get("name", "").lower() == name.lower():
+                        existing[i].update({k: v for k, v in comp.items() if v})
+                        updated.append(name)
+                        break
+            else:
+                comp["discovered_at"] = __import__("time").time()
+                comp["status"] = "active"
+                existing.append(comp)
+                added.append(name)
+
+        await self._memory.save("competitors", existing, category="research")
+
+        return {
+            "status": "saved",
+            "total_tracked": len(existing),
+            "added": added,
+            "updated": updated,
+            "note": f"Growth Daemon will now monitor {len(existing)} competitors every 30 minutes for website changes, pricing updates, and social mentions.",
         }
 
 

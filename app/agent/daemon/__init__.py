@@ -187,30 +187,53 @@ class GrowthDaemon:
         return discoveries
 
     async def _scan_social(self, product_name: str, keywords: list) -> list[dict]:
-        """扫描社媒新讨论"""
+        """扫描社媒新讨论（产品 + 竞品）"""
         discoveries = []
         searcher = self.tools.get("social_search")
         if not searcher:
             return []
 
+        # 搜索产品自身
         query = product_name or " ".join(keywords[:3])
-        if not query:
-            return []
+        if query:
+            try:
+                result = await searcher.execute(query=query, platforms=["reddit", "hackernews"])
+                if result.get("count", 0) > 0:
+                    for r in result.get("results", [])[:2]:
+                        discoveries.append({
+                            "type": "social_mention",
+                            "platform": r.get("platform", ""),
+                            "title": r.get("title", ""),
+                            "url": r.get("url", ""),
+                            "preview": r.get("content", "")[:200],
+                        })
+            except Exception as e:
+                logger.debug(f"Social scan (product) failed: {e}")
 
-        try:
-            result = await searcher.execute(query=query, platforms=["reddit", "hackernews"])
-            if result.get("count", 0) > 0:
-                # 只通知新的高价值讨论
-                for r in result.get("results", [])[:2]:
-                    discoveries.append({
-                        "type": "social_mention",
-                        "platform": r.get("platform", ""),
-                        "title": r.get("title", ""),
-                        "url": r.get("url", ""),
-                        "preview": r.get("content", "")[:200],
-                    })
-        except Exception as e:
-            logger.debug(f"Social scan failed: {e}")
+        # 搜索竞品动态
+        competitors = await self.memory.load("competitors", category="research")
+        if isinstance(competitors, list):
+            for comp in competitors[:3]:  # 最多扫 3 个竞品
+                comp_name = comp.get("name", "")
+                if not comp_name:
+                    continue
+                try:
+                    result = await searcher.execute(
+                        query=f"{comp_name} launch update new feature",
+                        platforms=["reddit", "hackernews", "x"],
+                    )
+                    if result.get("count", 0) > 0:
+                        for r in result.get("results", [])[:1]:
+                            discoveries.append({
+                                "type": "competitor_social",
+                                "competitor": comp_name,
+                                "platform": r.get("platform", ""),
+                                "title": r.get("title", ""),
+                                "url": r.get("url", ""),
+                                "preview": r.get("content", "")[:200],
+                            })
+                except Exception as e:
+                    logger.debug(f"Social scan (competitor {comp_name}) failed: {e}")
 
         return discoveries
 

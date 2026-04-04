@@ -21,8 +21,9 @@ from app.agent.engine.pipeline import PipelineRunner
 from app.agent.engine.loop import AgentLoop, LoopState  # 保留兼容
 from app.agent.tools import ToolRegistry
 from app.agent.tools.research import WebSearchTool, ScrapeWebsiteTool, SocialSearchTool, CompetitorAnalyzeTool, DeepScrapeTool
-from app.agent.tools.actions import WritePostTool, WriteEmailTool, SubmitToDirectoryTool, SetActiveCampaignTool
+from app.agent.tools.actions import WritePostTool, WriteEmailTool, SubmitToDirectoryTool, SetActiveCampaignTool, PublishPostTool, SaveCompetitorsTool
 from app.agent.tools.browser import BrowseWebsiteTool
+from app.agent.tools.twitter import TwitterReadTool
 from app.agent.experts import ExpertPool
 from app.agent.experts.market_researcher import MarketResearcher
 from app.agent.experts.economist import Economist
@@ -62,7 +63,7 @@ def _cleanup_expired_sessions():
         logger.info(f"Cleaned up {len(expired)} expired sessions")
 
 
-def _get_or_create_tools() -> ToolRegistry:
+def _get_or_create_tools(memory=None) -> ToolRegistry:
     """创建工具注册表"""
     registry = ToolRegistry()
     # 研究工具
@@ -74,9 +75,13 @@ def _get_or_create_tools() -> ToolRegistry:
     registry.register(BrowseWebsiteTool())
     # 行动工具
     registry.register(WritePostTool())
+    registry.register(PublishPostTool())
     registry.register(WriteEmailTool())
     registry.register(SubmitToDirectoryTool())
     registry.register(SetActiveCampaignTool())
+    registry.register(SaveCompetitorsTool(memory=memory))
+    # 平台 API 工具
+    registry.register(TwitterReadTool())
     return registry
 
 
@@ -129,10 +134,10 @@ async def agent_chat(
 
     if session_id not in _sessions:
         llm = AgentLLM()
-        tools = _get_or_create_tools()
         experts = _get_or_create_experts()
         experts.set_llm(llm)
         memory = GrowthMemory(base_dir=f".crabres/memory/{user_id}")
+        tools = _get_or_create_tools(memory=memory)
         runner = PipelineRunner(
             session_id=session_id, llm_service=llm,
             tool_registry=tools, expert_pool=experts, memory=memory,
@@ -178,10 +183,10 @@ async def agent_chat_stream(
 
     if session_id not in _sessions:
         llm = AgentLLM()
-        tools = _get_or_create_tools()
         experts = _get_or_create_experts()
         experts.set_llm(llm)
         memory = GrowthMemory(base_dir=f".crabres/memory/{user_id}")
+        tools = _get_or_create_tools(memory=memory)
         runner = PipelineRunner(
             session_id=session_id, llm_service=llm,
             tool_registry=tools, expert_pool=experts, memory=memory,
