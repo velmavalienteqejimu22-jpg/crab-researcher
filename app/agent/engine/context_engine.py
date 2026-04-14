@@ -42,12 +42,25 @@ CHANNEL_KEYWORDS = {
 
 
 def detect_relevant_channels(text: str) -> list[str]:
-    """从文本中检测涉及的渠道"""
+    """从文本中检测涉及的渠道（含扩展渠道）"""
     text_lower = text.lower()
     channels = []
+
+    # 原有渠道检测
     for channel, keywords in CHANNEL_KEYWORDS.items():
         if any(kw in text_lower for kw in keywords):
             channels.append(channel)
+
+    # 扩展渠道检测（7 个新增知识模块对应的渠道）
+    try:
+        from app.agent.knowledge.knowledge_expansion import EXPANDED_CHANNEL_KEYWORDS
+        for channel, keywords in EXPANDED_CHANNEL_KEYWORDS.items():
+            if any(kw in text_lower for kw in keywords):
+                if channel not in channels:
+                    channels.append(channel)
+    except ImportError:
+        pass
+
     return channels
 
 
@@ -77,7 +90,22 @@ def select_knowledge_for_task(expert_id: str, task: str, user_message: str = "")
         # 如果没检测到任何渠道，全部注入（fallback）
         return modules if modules else ["x_twitter_deep_knowledge", "xiaohongshu_deep_knowledge", "reddit_deep_knowledge"]
     
-    # 其他专家：返回空列表表示注入该专家的所有知识（保持现有行为）
+    # 其他专家：检查扩展知识是否有匹配
+    try:
+        from app.agent.knowledge.knowledge_expansion import EXPANDED_KNOWLEDGE, EXPANDED_CHANNEL_KEYWORDS
+        # 检查是否有扩展知识需要注入
+        expanded_items = EXPANDED_KNOWLEDGE.get(expert_id, [])
+        if expanded_items:
+            # 如果检测到相关渠道，返回对应的扩展知识模块名
+            for channel in channels:
+                if channel in EXPANDED_CHANNEL_KEYWORDS:
+                    for item in expanded_items:
+                        if channel in item["name"].lower() or any(kw in item["description"].lower() for kw in EXPANDED_CHANNEL_KEYWORDS[channel]):
+                            modules.append(item["name"]) if "modules" in dir() else None
+    except (ImportError, Exception):
+        pass
+
+    # 返回空列表表示注入该专家的所有知识（保持现有行为）
     return []
 
 

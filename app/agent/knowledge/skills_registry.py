@@ -1096,6 +1096,15 @@ def get_expert_knowledge(expert_id: str) -> str:
             parts.append(item["framework"])
             parts.append("")
 
+    # 合并扩展知识库（7 个新增知识模块）
+    try:
+        from app.agent.knowledge.knowledge_expansion import get_expanded_knowledge
+        expanded = get_expanded_knowledge(expert_id)
+        if expanded:
+            parts.append(expanded)
+    except ImportError:
+        pass
+
     # 所有专家都获取 2026 高级战术
     parts.append(ADVANCED_TACTICS_2026)
 
