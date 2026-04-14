@@ -215,3 +215,52 @@ class GrowthMemory:
             "total_size_mb": round(total_size / 1024 / 1024, 2),
         }
 
+
+
+    # ========== FTS5 Semantic Search Integration ==========
+
+    async def semantic_search(self, query: str, categories: list[str] = None, limit: int = 10) -> list[dict]:
+        """
+        Search memory using FTS5 BM25 ranking (replaces naive keyword search).
+        
+        Falls back to simple keyword search if FTS5 is unavailable.
+        """
+        try:
+            from app.agent.memory.semantic_search import SemanticMemorySearch
+            searcher = SemanticMemorySearch(base_dir=str(self.base_dir))
+            return await searcher.search(query, categories, limit)
+        except Exception as e:
+            logger.warning(f"FTS5 search failed, falling back to keyword: {e}")
+            return await self.search(query, categories)
+
+    async def search_for_prompt(self, query: str, categories: list[str] = None, max_chars: int = 2000) -> str:
+        """
+        Search and format results as injectable prompt text.
+        
+        This is what gets prepended to expert/pipeline system prompts
+        to give the agent "memory" across sessions.
+        """
+        try:
+            from app.agent.memory.semantic_search import SemanticMemorySearch
+            searcher = SemanticMemorySearch(base_dir=str(self.base_dir))
+            return await searcher.search_for_prompt(query, categories, max_chars)
+        except Exception as e:
+            logger.warning(f"Semantic search for prompt failed: {e}")
+            # Fallback: use basic search
+            results = await self.search(query, categories)
+            if not results:
+                return ""
+            lines = ["## RELEVANT MEMORIES (from past sessions)"]
+            for r in results[:5]:
+                lines.append(f"- [{r['category']}/{r['key']}] {r['preview'][:200]}")
+            return "\n".join(lines)
+
+    async def reindex(self):
+        """Force re-index all memory files for FTS5 search"""
+        try:
+            from app.agent.memory.semantic_search import SemanticMemorySearch
+            searcher = SemanticMemorySearch(base_dir=str(self.base_dir))
+            return await searcher.index_all(force=True)
+        except Exception as e:
+            logger.error(f"Reindex failed: {e}")
+            return {"error": str(e)}

@@ -168,6 +168,21 @@ class PipelineRunner:
         else:
             self._growth_patterns = ""
 
+        # 🔥 语义记忆搜索：用当前消息搜索相关历史记忆
+        try:
+            self._memory_context = await self.memory.search_for_prompt(msg)
+        except Exception:
+            self._memory_context = ""
+
+        # 🔥 Skill 加载：搜索与当前任务相关的已学技能
+        try:
+            from app.agent.skills import SkillStore
+            user_id = str(self.memory.base_dir).split("/")[-1]
+            skill_store = SkillStore(base_dir=f".crabres/skills/{user_id}")
+            self._skill_context = await skill_store.get_skills_for_prompt(msg)
+        except Exception:
+            self._skill_context = ""
+
         # 🔥 追问检测：如果上一轮已经搜过+有专家输出，新消息是追问/补充信息
         # → 不重走搜索，直接基于已有数据回答
         has_prior_research = len(self.state.research_data) > 0
@@ -334,11 +349,19 @@ class PipelineRunner:
             for r in useful_results[:5]
         )
 
+        # Load relevant learned skills for experts
+        skill_injection = getattr(self, '_skill_context', '')
+        memory_injection = getattr(self, '_memory_context', '')
+
         task = (
             f"Analyze this product and create a growth strategy.\n\n"
             f"Product: {json.dumps(product_info, ensure_ascii=False, default=str)[:800]}\n\n"
             f"Research data:\n{research_summary}"
         )
+        if skill_injection:
+            task += f"\n\n{skill_injection}"
+        if memory_injection:
+            task += f"\n\n{memory_injection}"
 
         context = {
             "product": product_info,

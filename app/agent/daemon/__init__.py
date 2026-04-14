@@ -306,6 +306,33 @@ class GrowthDaemon:
 
                         logger.info(f"Tracked action {action_id}: {metrics}")
 
+                        # 🔥 Auto-evolve: if result is "great", synthesize a Skill
+                        if total_engagement > 100:
+                            try:
+                                from app.agent.skills import SkillStore, SkillWriter
+                                user_id = str(self.memory.base_dir).split("/")[-1]
+                                store = SkillStore(base_dir=f".crabres/skills/{user_id}")
+                                writer = SkillWriter(store=store, llm=self.llm)
+                                
+                                product = await self.memory.load("product")
+                                product_ctx = json.dumps(product or {}, ensure_ascii=False, default=str)[:300]
+                                
+                                skill = await writer.synthesize_from_action(
+                                    action=action,
+                                    result={"metrics": metrics, "verdict": "great", "score": min(100, total_engagement)},
+                                    product_context=product_ctx,
+                                )
+                                if skill:
+                                    discoveries.append({
+                                        "type": "skill_learned",
+                                        "title": f"New skill learned: {skill.name}",
+                                        "skill_id": skill.id,
+                                        "confidence": skill.confidence,
+                                    })
+                                    logger.info(f"Auto-evolved skill from action {action_id}: {skill.name}")
+                            except Exception as skill_err:
+                                logger.debug(f"Skill auto-evolution failed: {skill_err}")
+
                 except Exception as e:
                     logger.debug(f"Failed to track action {action_id}: {e}")
 

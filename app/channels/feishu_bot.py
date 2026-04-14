@@ -163,41 +163,17 @@ async def _handle_message(event: dict):
         await _send_message(chat_id, "你好！我是 CrabRes 🦀 发送你的产品描述，我帮你做增长分析。")
         return
 
-    # 调用 Agent
+    # 调用 Agent (via ChannelGateway — shared initialization)
     logger.info(f"Feishu message from {chat_id}: {text[:50]}")
     await _send_message(chat_id, "🔍 正在研究中...")
 
     try:
-        from app.agent.engine.llm_adapter import AgentLLM, TaskTier
-        from app.agent.engine.loop import AgentLoop
-        from app.agent.tools import ToolRegistry
-        from app.agent.tools.research import WebSearchTool, ScrapeWebsiteTool, SocialSearchTool
-        from app.agent.experts import ExpertPool
-        from app.agent.experts.market_researcher import MarketResearcher
-        from app.agent.experts.economist import Economist
-        from app.agent.memory import GrowthMemory
+        from app.channels import ChannelGateway
 
-        llm = AgentLLM(budget_limit_usd=0.05)
-        tools = ToolRegistry()
-        tools.register(WebSearchTool())
-        tools.register(ScrapeWebsiteTool())
-        tools.register(SocialSearchTool())
-        experts = ExpertPool(llm=llm)
-        experts.register(MarketResearcher())
-        experts.register(Economist())
-        memory = GrowthMemory(base_dir=f".crabres/memory/feishu_{chat_id}")
+        gateway = ChannelGateway(channel="feishu", user_id=chat_id, language="zh")
+        response_text = await gateway.process(text)
 
-        loop = AgentLoop(session_id=f"feishu-{chat_id}", llm_service=llm, tool_registry=tools, expert_pool=experts, memory=memory)
-
-        result_parts = []
-        async for event_data in loop.run(text):
-            if event_data.get("type") == "message":
-                result_parts.append(event_data["content"])
-            elif event_data.get("type") == "status":
-                pass  # 状态消息不发到飞书
-
-        if result_parts:
-            response_text = "\n".join(result_parts)
+        if response_text:
             # 如果回复较长，用卡片
             if len(response_text) > 500:
                 card = _build_card(
