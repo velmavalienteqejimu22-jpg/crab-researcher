@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 from app.agent.daemon.scheduler import DaemonScheduler
+from app.agent.daemon.real_world import RealWorldConnector
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ class GrowthDaemon:
         self.notifier = notifier  # NotificationHub
         self._running = False
         self._scheduler = DaemonScheduler(self)
+        self._real_world = RealWorldConnector()
         self._discoveries: list[dict] = []  # 待通知的发现
 
     async def start(self):
@@ -50,12 +52,18 @@ class GrowthDaemon:
     async def stop(self):
         self._running = False
         self._scheduler.shutdown()
+        await self._real_world.close()
         logger.info("🦀 Growth Daemon stopped")
 
     @property
     def scheduler_status(self) -> dict:
         """返回调度器详细状态"""
         return self._scheduler.get_status()
+
+    @property
+    def real_world_status(self) -> dict:
+        """返回真实世界连接状态"""
+        return self._real_world.get_status()
 
     def get_pending_discoveries(self) -> list[dict]:
         """获取并清空待通知的发现（供 API 轮询）"""
@@ -87,6 +95,9 @@ class GrowthDaemon:
 
         # 4. 追踪已发布帖子的效果（action→result 闭环）
         tasks.append(self._scan_action_results())
+
+        # 5. 真实世界连接（RSS + 竞品爬虫 + Action 追踪）
+        tasks.append(self._real_world.tick())
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
