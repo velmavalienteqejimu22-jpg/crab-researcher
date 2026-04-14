@@ -156,6 +156,18 @@ class PipelineRunner:
         # ========== 流水线路径 ==========
         self.state.ask_count = 0
 
+        # 🔥 记忆注入：加载历史产品信息和增长模式，让 Agent 有"记忆感"
+        prior_product = await self.memory.load("product")
+        if prior_product and isinstance(prior_product, dict) and not self.state.product_info:
+            self.state.product_info.update({k: v for k, v in prior_product.items() if not k.startswith("_")})
+        
+        # 加载增长模式（Growth Dream 蒸馏的结果）
+        growth_patterns = await self.memory.load("growth_patterns", category="strategy")
+        if growth_patterns and isinstance(growth_patterns, dict):
+            self._growth_patterns = growth_patterns.get("patterns", "")
+        else:
+            self._growth_patterns = ""
+
         # 🔥 追问检测：如果上一轮已经搜过+有专家输出，新消息是追问/补充信息
         # → 不重走搜索，直接基于已有数据回答
         has_prior_research = len(self.state.research_data) > 0
@@ -333,6 +345,7 @@ class PipelineRunner:
             "tool_results": useful_results,
             "user_message": product_info.get("raw_description", ""),
             "expert_outputs": {},
+            "language": self._language,  # 🔥 Pass language to experts for consistency
         }
 
         expert_results = {}
@@ -409,7 +422,9 @@ STRICT FORMAT RULES:
 - End with 2-3 specific things to do THIS WEEK (not a numbered list of 10)
 - Total length: 3-5 paragraphs. Not more.
 
-{getattr(self, '_mood_injection', '')}""",
+{getattr(self, '_mood_injection', '')}
+
+{f"MEMORY — what you know about this user from past sessions:{chr(10)}" + getattr(self, '_growth_patterns', '') if getattr(self, '_growth_patterns', '') else ''}""",
             messages=[{
                 "role": "user",
                 "content": f"Product: {json.dumps(product_info, ensure_ascii=False, default=str)[:600]}\n\nResearch:\n{research_summary}\n\nExpert analysis:\n{expert_summary}\n\nChannel-specific playbooks (use these specific tactics, don't generalize):\n{channel_advice}\n\nSynthesize into a natural, conversational growth strategy. Reference the specific channel tactics above.",
@@ -521,6 +536,70 @@ Base it on the strategy and research data provided.""",
             deliverables.append({"name": "30-Day Growth Plan", "desc": f"plans/{path.name}", "path": str(path)})
         except Exception as e:
             logger.warning(f"Failed to generate growth plan: {e}")
+
+        # 4. 生成结构化 Playbook（供 Plan 页面展示）
+        try:
+            from app.agent.engine.llm_adapter import TaskTier as _TaskTier
+            from app.agent.memory.playbooks import PlaybookStore, parse_playbook_from_llm
+
+            playbook_json = await self.llm.generate(
+                system_prompt=f"""Generate a structured growth playbook in JSON format. Language: {lang}.
+Return ONLY valid JSON with this exact structure:
+{{
+  "name": "Playbook name",
+  "description": "One sentence",
+  "suitable_for": "Who this is for",
+  "total_budget": "$X",
+  "expected_timeline": "X weeks",
+  "expected_results": "What to expect",
+  "risk_factors": ["risk1", "risk2"],
+  "priority": 1,
+  "phases": [
+    {{
+      "name": "Phase name",
+      "duration": "Day 1-7",
+      "steps": [
+        {{
+          "order": 1,
+          "title": "Step title",
+          "detail": "3-5 sentences of specific instructions",
+          "tools": ["tool1"],
+          "budget": "$0",
+          "duration": "30 min",
+          "output": "What this step produces",
+          "success_criteria": "How to know it worked",
+          "common_mistakes": ["mistake1"]
+        }}
+      ]
+    }}
+  ]
+}}
+Create 3 phases (Prep/Execute/Track) with 3-5 steps each. Be VERY specific.""",
+                messages=[{"role": "user", "content": f"Product: {product_desc}\n\nStrategy: {strategy_response[:1000]}"}],
+                tier=_TaskTier.THINKING,
+                max_tokens=2500,
+            )
+            
+            # Parse and save
+            raw = playbook_json.content
+            # Extract JSON from potential markdown code blocks
+            if "```json" in raw:
+                raw = raw.split("```json")[1].split("```")[0]
+            elif "```" in raw:
+                raw = raw.split("```")[1].split("```")[0]
+            
+            playbook = parse_playbook_from_llm(raw.strip())
+            if playbook:
+                store = PlaybookStore(base_dir=str(self.memory.base_dir))
+                await store.save_playbook(playbook)
+                deliverables.append({
+                    "name": f"Growth Playbook: {playbook.name}",
+                    "desc": f"Structured playbook with {playbook.total_steps} actionable steps — check the Plan tab!",
+                    "path": "playbook",
+                })
+                logger.info(f"Playbook generated: {playbook.name} ({playbook.total_steps} steps)")
+        except Exception as e:
+            logger.warning(f"Failed to generate playbook: {e}")
 
         if deliverables:
             logger.info(f"Delivered {len(deliverables)} files to workspace")
@@ -635,7 +714,7 @@ Rules:
     # ========== 持久化 ==========
 
     async def _persist(self):
-        """保存状态"""
+        """保存状态 + 记录评估指标"""
         checkpoint = {
             "session_id": self.state.session_id,
             "turn_count": self.state.turn_count,
@@ -645,3 +724,30 @@ Rules:
             "created_at": self.state.created_at,
         }
         await self.memory.save(f"pipeline_state_{self.state.session_id}", checkpoint)
+
+        # 🔥 记录评估指标
+        try:
+            from app.agent.eval import get_collector
+            collector = get_collector()
+            
+            total_research = len(self.state.research_data)
+            useful_research = len([r for r in self.state.research_data if r.get("useful")])
+            total_experts = len(self.state.expert_outputs)
+            valid_experts = len([v for v in self.state.expert_outputs.values() 
+                               if isinstance(v, str) and not v.startswith("[")])
+            
+            collector.record_session(self.state.session_id, {
+                "turn_count": self.state.turn_count,
+                "tcr": 1 if any(m["role"] == "assistant" for m in self.state.message_history) else 0,
+                "rdr": round(useful_research / max(total_research, 1), 2),
+                "ear": round(valid_experts / max(total_experts, 1), 2),
+                "tpt": self.llm.usage.total_tokens,
+                "cpt": self.llm.usage.total_cost_usd,
+                "ttc": round(time.time() - self.state.created_at, 1),
+                "dgr": 1 if hasattr(self, '_last_deliverables_count') and self._last_deliverables_count > 0 else 0,
+                "pgr": 1 if hasattr(self, '_last_playbook_generated') and self._last_playbook_generated else 0,
+                "experts_activated": list(self.state.expert_outputs.keys()),
+                "language": self._language,
+            })
+        except Exception as e:
+            logger.debug(f"Eval metrics recording failed: {e}")

@@ -34,13 +34,18 @@ class BaseExpert(ABC):
         1. 选择性知识注入（不全量 580 行，只注入任务相关的渠道知识）
         2. 上下文隔离（每个专家只看到自己需要的 context 片段）
         3. Prompt Cache（同 session 内相同知识不重复发送）
+        4. 语言一致性强制（根据 context["language"] 统一输出语言）
         """
         if not self._llm:
-            return f"[{self.name}] LLM 未初始化"
+            return f"[{self.name}] LLM not initialized"
 
         from app.agent.engine.llm_adapter import TaskTier
         from app.agent.engine.context_engine import get_selective_knowledge, build_expert_context
         import json
+
+        # 语言一致性：从 context 中获取用户选择的语言
+        language = context.get("language", "en")
+        lang_name = "Chinese" if language == "zh" else "English"
 
         # 🔥 选择性知识注入（根据任务内容只注入相关渠道知识）
         user_message = context.get("user_message", "")
@@ -50,6 +55,15 @@ class BaseExpert(ABC):
         enhanced_prompt = self.system_prompt
         if knowledge:
             enhanced_prompt += "\n" + knowledge
+
+        # 🔥 语言强制规则（最高优先级，放在所有规则之前）
+        enhanced_prompt += f"""
+
+## LANGUAGE RULE (HIGHEST PRIORITY — OVERRIDE EVERYTHING)
+You MUST respond ONLY in {lang_name}. This is non-negotiable.
+- If your system prompt is in Chinese but the user wants English → respond in English.
+- If your system prompt is in English but the user wants Chinese → respond in Chinese.
+- Every single word of your output must be in {lang_name}. No mixing."""
 
         # 所有专家共享的输出质量规则
         enhanced_prompt += """
