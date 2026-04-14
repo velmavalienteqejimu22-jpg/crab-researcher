@@ -28,7 +28,7 @@ def _get_daemon(request: Request):
 
 @router.get("/status")
 async def daemon_status(request: Request, current_user: dict = Depends(get_current_user)):
-    """Get daemon status and pending discoveries"""
+    """Get daemon status, scheduler details, and pending discoveries"""
     daemon = _get_daemon(request)
     if not daemon:
         return {"running": False, "error": "Daemon not initialized"}
@@ -37,6 +37,7 @@ async def daemon_status(request: Request, current_user: dict = Depends(get_curre
         "running": daemon._running,
         "tick_interval_seconds": daemon.TICK_INTERVAL,
         "pending_discoveries": len(daemon._discoveries),
+        "scheduler": daemon.scheduler_status,
     }
 
 
@@ -72,12 +73,13 @@ async def force_tick(request: Request, current_user: dict = Depends(get_current_
     if not daemon:
         return {"error": "Daemon not initialized"}
 
-    await daemon._tick()
+    await daemon._scheduler.force_tick()
     discoveries = daemon.get_pending_discoveries()
     return {
         "status": "ticked",
         "discoveries_found": len(discoveries),
         "discoveries": discoveries,
+        "scheduler": daemon.scheduler_status,
     }
 
 
@@ -88,8 +90,8 @@ async def force_dream(request: Request, current_user: dict = Depends(get_current
     if not daemon:
         return {"error": "Daemon not initialized"}
 
-    await daemon.growth_dream()
-    return {"status": "dream_completed"}
+    await daemon._scheduler.force_dream()
+    return {"status": "dream_completed", "scheduler": daemon.scheduler_status}
 
 
 @router.get("/discoveries")

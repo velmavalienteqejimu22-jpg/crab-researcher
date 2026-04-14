@@ -12,6 +12,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from app.agent.daemon.scheduler import DaemonScheduler
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,41 +37,31 @@ class GrowthDaemon:
         self.llm = llm
         self.notifier = notifier  # NotificationHub
         self._running = False
-        self._task: Optional[asyncio.Task] = None
+        self._scheduler = DaemonScheduler(self)
         self._discoveries: list[dict] = []  # 待通知的发现
 
     async def start(self):
         if self._running:
             return
         self._running = True
-        self._task = asyncio.create_task(self._run_loop())
-        logger.info("🦀 Growth Daemon started (tick every 30min)")
+        self._scheduler.start()
+        logger.info("🦀 Growth Daemon started (APScheduler: tick@30min, dream@midnight)")
 
     async def stop(self):
         self._running = False
-        if self._task:
-            self._task.cancel()
+        self._scheduler.shutdown()
         logger.info("🦀 Growth Daemon stopped")
+
+    @property
+    def scheduler_status(self) -> dict:
+        """返回调度器详细状态"""
+        return self._scheduler.get_status()
 
     def get_pending_discoveries(self) -> list[dict]:
         """获取并清空待通知的发现（供 API 轮询）"""
         discoveries = self._discoveries.copy()
         self._discoveries.clear()
         return discoveries
-
-    async def _run_loop(self):
-        while self._running:
-            try:
-                await self._tick()
-
-                # 午夜边界（在 try 内，异常不会杀死循环）
-                now = datetime.now()
-                if now.hour == 0 and 0 <= now.minute < 5:
-                    await self._midnight_boundary()
-            except Exception as e:
-                logger.error(f"Daemon tick error: {e}", exc_info=True)
-
-            await asyncio.sleep(self.TICK_INTERVAL)
 
     async def _tick(self):
         logger.debug("Growth Daemon tick")

@@ -59,7 +59,7 @@ async def lifespan(app: FastAPI):
     scheduler.start()
     app.state.monitoring_scheduler = scheduler
 
-    # Growth Daemon — 后台增长引擎
+    # Growth Daemon — APScheduler 驱动的持久化增长引擎
     tools = ToolRegistry()
     tools.register(WebSearchTool())
     tools.register(ScrapeWebsiteTool())
@@ -71,13 +71,37 @@ async def lifespan(app: FastAPI):
     await daemon.start()
     app.state.growth_daemon = daemon
 
+    # Telegram 长轮询模式（不依赖公网 Webhook，本地开发也能用）
+    from app.channels.telegram_polling import TelegramPoller
+    tg_poller = TelegramPoller()
+    await tg_poller.start()
+    app.state.telegram_poller = tg_poller
+
+    # Playwright 浏览器预热（后台初始化，不阻塞启动）
+    import asyncio
+    asyncio.create_task(_warmup_playwright())
+
     logging.info("🦀 CrabRes Agent Engine started!")
     yield
 
+    await tg_poller.stop()
     await daemon.stop()
     scheduler.shutdown()
     await engine.dispose()
     logging.info("🦀 CrabRes shut down")
+
+
+async def _warmup_playwright():
+    """后台预热 Playwright 浏览器（首次启动较慢）"""
+    try:
+        from app.agent.tools.browser import _get_browser
+        browser = await _get_browser()
+        if browser:
+            logging.info("🌐 Playwright browser warmed up")
+        else:
+            logging.warning("🌐 Playwright not available (install: playwright install chromium)")
+    except Exception as e:
+        logging.warning(f"🌐 Playwright warmup failed: {e}")
 
 
 app = FastAPI(
