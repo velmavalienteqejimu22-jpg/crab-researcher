@@ -43,6 +43,7 @@ from app.agent.daemon import GrowthDaemon
 from app.agent.notifications import NotificationHub
 from app.agent.tools import ToolRegistry
 from app.agent.tools.research import WebSearchTool, ScrapeWebsiteTool, SocialSearchTool
+from app.agent.tools.browser import BrowseWebsiteTool
 from app.agent.memory import GrowthMemory
 from app.agent.engine.llm_adapter import AgentLLM
 
@@ -79,6 +80,7 @@ async def lifespan(app: FastAPI):
         tools.register(WebSearchTool())
         tools.register(ScrapeWebsiteTool())
         tools.register(SocialSearchTool())
+        tools.register(BrowseWebsiteTool())
         from app.agent.tools.reddit import RedditPostTool, RedditCommentTool, RedditSearchTool
         from app.agent.tools.email_sender import SendEmailTool
         tools.register(RedditPostTool())

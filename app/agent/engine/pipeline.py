@@ -475,15 +475,28 @@ Do NOT say "Could you provide more details" — be specific about what you need.
         if audience and audience.lower() not in search_base.lower():
             search_base = f"{search_base} for {audience}"
 
-        # 构建 3 个不同角度的搜索
+        # 构建 4 个不同角度的搜索（更具针对性）
+        product_name = product_info.get("name", "")
+        competitors_list = product_info.get("competitors", [])
+        
         queries = [
             f"{search_base} competitors pricing comparison 2026",
             f"{search_base} user acquisition channels best practices",
         ]
+        
+        # 🔥 如果有已知竞品名，直接搜竞品（比泛搜更精准）
+        if competitors_list and isinstance(competitors_list, list):
+            comp_names = [c.get("name", "") if isinstance(c, dict) else str(c) for c in competitors_list[:3]]
+            comp_names = [n for n in comp_names if n]
+            if comp_names:
+                queries.append(f"{' vs '.join(comp_names)} comparison review pricing 2026")
+        
+        # 🔥 搜索真实用户讨论（Reddit/HN）
         if social_tool:
-            # 社交搜索用更自然的语言
             social_query = f"{audience or 'developers'} {desc[:50] or search_base[:50]} recommendation"
             queries.append(social_query)
+        else:
+            queries.append(f"site:reddit.com {search_base[:60]} recommendation")
 
         # 去重
         queries = [q for q in queries if q not in self.state.searched_queries]
@@ -1052,122 +1065,155 @@ If the user asks you to DO something (browse, search, post, write), acknowledge 
         return response.content
 
     async def _tool_followup(self, user_message: str) -> str:
-        """用户在追问中要求执行动作（浏览器、搜索、发帖等）→ 调用工具"""
+        """用户在追问中要求执行动作（浏览器、搜索、发帖等）→ 调用真实工具"""
         from app.agent.engine.llm_adapter import TaskTier
         import asyncio
 
         lang = "Chinese" if self._language == "zh" else "English"
         msg_lower = user_message.lower()
-
-        # 检测具体要做什么
-        browse_triggers = ["browser", "浏览器", "browse", "打开", "访问", "看看竞品", "看一下"]
-        search_triggers = ["搜索", "search", "找", "查"]
         product_info = self.state.product_info
+        product_name = product_info.get("name", "")
+        product_desc = product_info.get("description", product_info.get("raw_description", ""))
 
         result_text = ""
+        tool_used = "none"
 
-        # 1. 浏览器请求：找一个竞品网站并真正打开
+        # === 1. 浏览器/竞品体验请求 ===
+        browse_triggers = ["browser", "浏览器", "browse", "打开", "访问", "看看", "体验", "竞品"]
         if any(t in msg_lower for t in browse_triggers):
-            # 从已有研究数据中提取竞品 URL
+            # Step A: 先用搜索找到竞品 URL
+            search_tool = self.tools.get("web_search")
+            browse_tool = self.tools.get("browse_website")
+            
             competitor_url = None
             competitor_name = None
-
-            # 先从产品信息中的竞品列表找
-            competitors = product_info.get("competitors", [])
-            if competitors and isinstance(competitors, list):
-                comp = competitors[0]
-                if isinstance(comp, dict):
-                    competitor_name = comp.get("name", "")
-                    # 搜索竞品 URL
-                    search_tool = self.tools.get("web_search")
-                    if search_tool and competitor_name:
-                        try:
-                            sr = await asyncio.wait_for(
-                                search_tool.execute(query=f"{competitor_name} official website"),
-                                timeout=15.0
-                            )
-                            if isinstance(sr, dict):
-                                for r in sr.get("results", []):
-                                    url = r.get("url", "")
-                                    if url and "google" not in url and "bing" not in url:
-                                        competitor_url = url
-                                        break
-                        except Exception:
-                            pass
-
-            # 如果找到了 URL，用浏览器打开
-            if competitor_url:
-                browse_tool = self.tools.get("browse_website")
-                scrape_tool = self.tools.get("scrape_website")
-                tool = browse_tool or scrape_tool
-
-                if tool:
-                    try:
-                        browse_result = await asyncio.wait_for(
-                            tool.execute(url=competitor_url),
-                            timeout=30.0
-                        )
-                        if isinstance(browse_result, dict):
-                            title = browse_result.get("title", "")
-                            text = browse_result.get("text", browse_result.get("content", ""))[:1500]
-                            result_text = f"I browsed {competitor_name} ({competitor_url}):\n\nTitle: {title}\nContent preview:\n{text}"
-                        else:
-                            result_text = f"Browsed {competitor_url} but got limited data."
-                    except Exception as e:
-                        result_text = f"Tried to browse {competitor_url} but encountered an error: {str(e)[:100]}"
-                else:
-                    result_text = f"Found competitor {competitor_name} but browser tool is not available in this environment."
-            else:
-                # 没有竞品信息，搜索一下
-                search_tool = self.tools.get("web_search")
-                desc = product_info.get("description", product_info.get("raw_description", ""))
-                if search_tool and desc:
-                    try:
-                        sr = await asyncio.wait_for(
-                            search_tool.execute(query=f"{desc[:80]} competitors"),
-                            timeout=15.0
-                        )
-                        if isinstance(sr, dict):
-                            results = sr.get("results", [])[:3]
-                            result_text = "Searched for competitors:\n" + "\n".join(
-                                f"- {r.get('title', '')}: {r.get('url', '')} — {r.get('content', '')[:100]}"
-                                for r in results
-                            )
-                    except Exception:
-                        result_text = "Search failed, please try again."
-
-        # 2. 搜索请求
-        elif any(t in msg_lower for t in search_triggers):
-            search_tool = self.tools.get("web_search")
+            
             if search_tool:
+                search_query = f"{product_desc[:80]} competitors official website 2026" if product_desc else f"{product_name} competitors"
                 try:
                     sr = await asyncio.wait_for(
-                        search_tool.execute(query=user_message[:120]),
+                        search_tool.execute(query=search_query, num_results=5),
+                        timeout=20.0
+                    )
+                    if isinstance(sr, dict):
+                        for r in sr.get("results", []):
+                            url = r.get("url", "")
+                            title = r.get("title", "")
+                            # 跳过搜索引擎和社交媒体
+                            skip = ["google", "bing", "reddit", "twitter", "youtube", "wikipedia", "github.com/topics"]
+                            if url and not any(s in url.lower() for s in skip):
+                                competitor_url = url
+                                competitor_name = title.split(" - ")[0].split(" | ")[0].strip()[:50]
+                                break
+                        
+                        # 同时记录搜索结果作为备用
+                        search_summary = "\n".join(
+                            f"- {r.get('title', '')}: {r.get('url', '')} — {r.get('content', '')[:120]}"
+                            for r in sr.get("results", [])[:5]
+                        )
+                        result_text = f"Search results for competitors:\n{search_summary}\n\n"
+                except Exception as e:
+                    logger.warning(f"Search for competitors failed: {e}")
+            
+            # Step B: 用浏览器打开竞品网站
+            if competitor_url and browse_tool:
+                tool_used = "browse_website"
+                try:
+                    browse_result = await asyncio.wait_for(
+                        browse_tool.execute(url=competitor_url, screenshot=True, analyze=True),
+                        timeout=45.0
+                    )
+                    if isinstance(browse_result, dict):
+                        title = browse_result.get("title", "")
+                        text = browse_result.get("content_preview", "")[:2000]
+                        visual = browse_result.get("visual_analysis", "")
+                        links = browse_result.get("links", [])[:5]
+                        screenshot_note = browse_result.get("screenshot_note", "")
+                        
+                        result_text += f"\n=== Browsed {competitor_name} ({competitor_url}) ===\n"
+                        result_text += f"Title: {title}\n"
+                        if visual:
+                            result_text += f"\nVisual Analysis (from screenshot):\n{visual}\n"
+                        result_text += f"\nContent Preview:\n{text[:1500]}\n"
+                        if links:
+                            result_text += f"\nKey Links:\n" + "\n".join(f"  - {l.get('text', '')}: {l.get('href', '')}" for l in links)
+                        if screenshot_note:
+                            result_text += f"\n\n{screenshot_note}"
+                    else:
+                        result_text += f"Browsed {competitor_url} but got unexpected result format."
+                except Exception as e:
+                    logger.warning(f"Browse {competitor_url} failed: {e}")
+                    result_text += f"\nBrowse attempt failed ({str(e)[:80]}), using search data above."
+                    tool_used = "web_search"
+            elif competitor_url:
+                # 没有浏览器工具，用 scrape 降级
+                scrape_tool = self.tools.get("scrape_website")
+                if scrape_tool:
+                    tool_used = "scrape_website"
+                    try:
+                        sr = await asyncio.wait_for(
+                            scrape_tool.execute(url=competitor_url),
+                            timeout=20.0
+                        )
+                        if isinstance(sr, dict):
+                            result_text += f"\nScraped {competitor_name} ({competitor_url}):\n{sr.get('content', '')[:2000]}"
+                    except Exception as e:
+                        result_text += f"\nScrape failed: {str(e)[:80]}"
+            
+            if not result_text.strip():
+                result_text = "Could not find competitor information. Search API may not be configured."
+
+        # === 2. 搜索请求 ===
+        elif any(t in msg_lower for t in ["搜索", "search", "找", "查"]):
+            search_tool = self.tools.get("web_search")
+            if search_tool:
+                tool_used = "web_search"
+                try:
+                    sr = await asyncio.wait_for(
+                        search_tool.execute(query=user_message[:120], num_results=5),
                         timeout=15.0
                     )
                     if isinstance(sr, dict):
+                        answer = sr.get("answer", "")
                         results = sr.get("results", [])[:5]
-                        result_text = "Search results:\n" + "\n".join(
-                            f"- {r.get('title', '')}: {r.get('url', '')}\n  {r.get('content', '')[:150]}"
+                        result_text = f"Search query: {user_message[:120]}\n"
+                        if answer:
+                            result_text += f"Direct answer: {answer}\n\n"
+                        result_text += "Results:\n" + "\n".join(
+                            f"- {r.get('title', '')}: {r.get('url', '')}\n  {r.get('content', '')[:200]}"
                             for r in results
                         )
                 except Exception as e:
                     result_text = f"Search failed: {str(e)[:100]}"
 
+        # === 3. 其他工具请求（发帖、写内容等）===
+        else:
+            result_text = f"Received action request: {user_message}. Tools available: {[t.name for t in self.tools.list_definitions()]}"
+
         # 用 LLM 基于工具结果生成自然回复
         response = await self.llm.generate(
             system_prompt=f"""You are CrabRes, an AI growth agent. Respond in {lang}.
-You just executed a tool action based on the user's request. Present the results naturally.
-If you browsed a competitor's website, analyze what you found: their positioning, pricing, features, and what the user can learn from it.
-If you searched, highlight the most relevant findings.
-Be specific and data-driven. 2-4 paragraphs.""",
+You just executed a real tool action. Present the results naturally and analytically.
+Tool used: {tool_used}
+
+If you browsed a competitor website, provide a DETAILED competitive analysis:
+- What the competitor does (their value proposition)
+- Their pricing model
+- Design quality and UX observations
+- Trust signals (testimonials, logos, numbers)
+- Key takeaways for our product ({product_name})
+- What we can learn and differentiate from
+
+If you searched, highlight the most actionable findings.
+Be specific, data-driven, and reference actual URLs/numbers from the results. 3-5 paragraphs.""",
             messages=self.state.message_history[-6:] + [
-                {{"role": "user", "content": f"Tool execution result:\n{result_text}\n\nUser's original request: {user_message}"}}
+                {"role": "user", "content": f"Tool execution result:\n{result_text}\n\nUser original request: {user_message}"}
             ],
             tier=TaskTier.THINKING,
-            max_tokens=1500,
+            max_tokens=2000,
         )
         return response.content
+
 
     async def _quick_reply(self, user_message: str, instruction: str) -> str:
         """LLM 简短回复（不调工具，不调专家，但带完整上下文）"""
