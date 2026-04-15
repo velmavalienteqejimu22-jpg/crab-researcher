@@ -468,6 +468,17 @@ Answer naturally and warmly. 2-3 sentences max. Then ask what they're building."
                     self._message_history.append({"role": "assistant", "content": content})
                     await self._save_output_to_memory(content)
                     yield {"type": "message", "content": content}
+
+                    # Harness: 如果输出是策略内容且有研究数据，也生成交付物
+                    if len(content) > 500 and len(tool_results) >= 2:
+                        yield {"type": "status", "content": "Preparing deliverables..."}
+                        try:
+                            deliverables = await self._generate_deliverables(context, content, self.state.expert_outputs)
+                            if deliverables:
+                                files_msg = "\n".join(f"- {d['name']}: {d['desc']}" for d in deliverables)
+                                yield {"type": "message", "content": f"I've prepared these for you:\n\n{files_msg}\n\nYou can find them in your workspace."}
+                        except Exception as e:
+                            logger.warning(f"Deliverables generation failed: {e}")
                     break
 
                 elif decision.type == ActionType.ASK_USER:
@@ -1001,6 +1012,16 @@ The user came here because they're tired of generic advice. Show them what real 
         await self._save_output_to_memory(synthesis)
         yield {"type": "message", "content": synthesis}
 
+        # 5. DELIVER — 生成可交付物（复用 PipelineRunner 的交付物能力）
+        yield {"type": "status", "content": "Preparing deliverables..."}
+        try:
+            deliverables = await self._generate_deliverables(context, synthesis, expert_results)
+            if deliverables:
+                files_msg = "\n".join(f"- {d['name']}: {d['desc']}" for d in deliverables)
+                yield {"type": "message", "content": f"I've prepared these for you:\n\n{files_msg}\n\nYou can find them in your workspace."}
+        except Exception as e:
+            logger.warning(f"Deliverables generation failed (non-fatal): {e}")
+
     async def _coordinator_synthesize(self, task: str, expert_results: dict[str, str], context: dict) -> str:
         """
         Coordinator（CGO）综合所有专家观点，产出最终回复
@@ -1353,6 +1374,179 @@ The user came here because they're tired of generic advice. Show them what real 
             "turn": self.state.turn_count,
             "timestamp": time.time(),
         })
+
+    async def _generate_deliverables(self, context: dict, strategy_response: str, expert_results: dict) -> list:
+        """
+        生成可交付物 — 竞品分析报告、内容草稿、30天计划、Playbook
+        
+        这是 AgentLoop 的 DELIVER 步骤，从 PipelineRunner._step_deliver 移植并简化。
+        Harness: 只在有足够数据时生成，不生成垃圾。
+        """
+        from app.agent.engine.llm_adapter import TaskTier
+        from pathlib import Path
+        import json as _json
+
+        product_info = context.get("product", {})
+        product_name = product_info.get("name", "product")
+        product_desc = _json.dumps(product_info, ensure_ascii=False, default=str)[:500]
+        
+        # 质量门控
+        has_real_name = product_name not in ("product", "unknown", "")
+        has_real_desc = bool(product_info.get("description") and len(product_info.get("description", "")) > 20)
+        if not has_real_name and not has_real_desc:
+            logger.info("Skipping deliverables: product info too vague")
+            return []
+
+        workspace = self.workspace
+        for sub in ["drafts", "reports", "plans"]:
+            (workspace / sub).mkdir(exist_ok=True)
+
+        deliverables = []
+        lang = "Chinese" if getattr(self, '_language', 'en') == "zh" else "English"
+
+        # 1. 竞品分析报告
+        tool_results = context.get("tool_results", [])
+        research_text = "\n".join(
+            f"- {r.get('tool','')}: {_json.dumps(r.get('result',{}), ensure_ascii=False, default=str)[:600]}"
+            for r in tool_results[:5]
+            if isinstance(r.get("result"), dict) and not r["result"].get("error")
+        )
+        if research_text:
+            try:
+                report = await self.llm.generate(
+                    system_prompt=f"Generate a competitor analysis report in {lang}. Be specific — use real names, numbers, URLs from the research data. Format as clean markdown. 500-800 words.",
+                    messages=[{"role": "user", "content": f"Product: {product_desc}\n\nResearch data:\n{research_text}"}],
+                    tier=TaskTier.THINKING, max_tokens=1500,
+                )
+                path = workspace / "reports" / f"competitor_analysis_{product_name.lower().replace(' ','_')}.md"
+                file_content = f"# Competitor Analysis: {product_name}\n\n{report.content}"
+                path.write_text(file_content, encoding="utf-8")
+                deliverables.append({"name": "Competitor Analysis", "desc": f"reports/{path.name}", "path": str(path)})
+            except Exception as e:
+                logger.warning(f"Failed to generate competitor report: {e}")
+
+        # 2. 内容草稿（Reddit + X）
+        try:
+            draft = await self.llm.generate(
+                system_prompt=f"Write ready-to-post social media drafts in {lang}. Write TWO versions: 1) Reddit post (title + body, genuine tone, NOT promotional) 2) Twitter/X thread (hook + 3-5 tweets). Use the product name. Sound like a real person.",
+                messages=[{"role": "user", "content": f"Product: {product_desc}\n\nStrategy: {strategy_response[:800]}"}],
+                tier=TaskTier.WRITING, max_tokens=1200,
+            )
+            path = workspace / "drafts" / f"first_posts_{product_name.lower().replace(' ','_')}.md"
+            file_content = f"# Content Drafts: {product_name}\n\n{draft.content}"
+            path.write_text(file_content, encoding="utf-8")
+            deliverables.append({"name": "Content Drafts (Reddit + X)", "desc": f"drafts/{path.name}", "path": str(path)})
+        except Exception as e:
+            logger.warning(f"Failed to generate content drafts: {e}")
+
+        # 3. 30天增长计划
+        try:
+            plan = await self.llm.generate(
+                system_prompt=f"Create a 30-day growth plan in {lang}. Format: Week 1/2/3/4, each with 3-4 specific tasks. Be specific: which platform, what content, what time, what metrics.",
+                messages=[{"role": "user", "content": f"Product: {product_desc}\n\nStrategy: {strategy_response[:800]}"}],
+                tier=TaskTier.THINKING, max_tokens=1500,
+            )
+            path = workspace / "plans" / f"30day_growth_{product_name.lower().replace(' ','_')}.md"
+            file_content = f"# 30-Day Growth Plan: {product_name}\n\n{plan.content}"
+            path.write_text(file_content, encoding="utf-8")
+            deliverables.append({"name": "30-Day Growth Plan", "desc": f"plans/{path.name}", "path": str(path)})
+        except Exception as e:
+            logger.warning(f"Failed to generate growth plan: {e}")
+
+        # 4. 结构化 Playbook（供 Plan 页面展示）
+        try:
+            from app.agent.memory.playbooks import PlaybookStore, parse_playbook_from_llm
+            from app.agent.knowledge.channel_playbooks import get_channels_for_product, get_channel_sop
+
+            p_type = product_info.get("type", "saas")
+            channels = get_channels_for_product(p_type)
+            channel_sops = ""
+            for ch_key in channels[:3]:
+                sop = get_channel_sop(ch_key)
+                if sop:
+                    channel_sops += f"\n### {sop.get('name', ch_key)}\n"
+                    channel_sops += f"Quick start: {', '.join(sop.get('quick_start', [])[:3])}\n"
+                    channel_sops += f"Template: {sop.get('template_title', '')}\n"
+
+            self_aware_note = ""
+            if product_info.get("is_self"):
+                self_aware_note = "IMPORTANT: The product is CrabRes ITSELF. Create a growth plan for yourself."
+
+            playbook_json = await self.llm.generate(
+                system_prompt=f"""Generate a structured growth playbook in JSON. Language: {lang}.
+{self_aware_note}
+RULES: budget $0 per step, duration under 4 hours, specific platforms/subreddits/hashtags.
+NO generic steps like "Create brand identity". Every step = concrete deliverable.
+{channel_sops}
+Return ONLY valid JSON: {{"name":"...","description":"...","total_budget":"$0","expected_timeline":"4 weeks","risk_factors":["..."],"priority":1,"phases":[{{"name":"...","duration":"Day 1-3","steps":[{{"order":1,"title":"...","detail":"...","tools":["..."],"budget":"$0","duration":"2 hours","output":"...","success_criteria":"...","common_mistakes":["..."]}}]}}]}}
+Create 3 phases, 12-15 steps total.""",
+                messages=[{"role": "user", "content": f"Product: {product_desc}\nStrategy: {strategy_response[:1000]}"}],
+                tier=TaskTier.CRITICAL, max_tokens=4000,
+            )
+            raw = playbook_json.content
+            if "```json" in raw:
+                raw = raw.split("```json")[1].split("```")[0]
+            elif "```" in raw:
+                raw = raw.split("```")[1].split("```")[0]
+            playbook = parse_playbook_from_llm(raw.strip())
+            if playbook:
+                store = PlaybookStore(base_dir=str(self.memory.base_dir))
+                await store.save_playbook(playbook)
+                deliverables.append({
+                    "name": f"Growth Playbook: {playbook.name}",
+                    "desc": f"Structured playbook with {playbook.total_steps} actionable steps — check the Plan tab!",
+                    "path": "playbook",
+                })
+        except Exception as e:
+            logger.warning(f"Failed to generate playbook: {e}")
+
+        # 5. 执行操作（queued）
+        try:
+            from app.agent.engine.execution import ExecutionEngine, ExecutionRequest
+            from app.agent.engine.autonomous import AutonomousEngine
+            from app.agent.engine.action_tracker import ActionTracker
+
+            exec_engine = ExecutionEngine(
+                tools=self.tools,
+                memory=self.memory,
+                autonomous=AutonomousEngine(self.memory),
+                tracker=ActionTracker(),
+            )
+            exec_plan = await self.llm.generate(
+                system_prompt="Extract IMMEDIATE executable actions from the strategy. Return JSON array: [{\"action_type\": \"reddit_post|twitter_post|send_email\", \"platform\": \"...\", \"description\": \"...\", \"params\": {...}}]. Max 3 actions. Return [] if none.",
+                messages=[{"role": "user", "content": f"Strategy: {strategy_response[:1500]}"}],
+                tier=TaskTier.PARSING, max_tokens=800,
+            )
+            raw_plan = exec_plan.content.strip()
+            if "```" in raw_plan:
+                raw_plan = raw_plan.split("```")[1].split("```")[0]
+                if raw_plan.startswith("json"):
+                    raw_plan = raw_plan[4:]
+            actions = _json.loads(raw_plan)
+            if isinstance(actions, list):
+                exec_results = []
+                for act in actions[:3]:
+                    req = ExecutionRequest(
+                        action_type=act.get("action_type", ""),
+                        platform=act.get("platform", ""),
+                        description=act.get("description", ""),
+                        params=act.get("params", {}),
+                        source="loop",
+                    )
+                    result = await exec_engine.execute(req)
+                    exec_results.append(f"{act.get('platform','')}({result.status})")
+                if exec_results:
+                    deliverables.append({
+                        "name": "Executed Actions",
+                        "desc": f"{len(exec_results)} actions executed: {', '.join(exec_results)}",
+                        "path": "execution_log",
+                    })
+        except (_json.JSONDecodeError, Exception) as e:
+            logger.debug(f"Execution step skipped: {e}")
+
+        if deliverables:
+            logger.info(f"AgentLoop delivered {len(deliverables)} items")
+        return deliverables
 
     async def _auto_save_competitors_from_results(self, context: dict):
         """
@@ -1917,7 +2111,7 @@ The user came here because they're tired of generic advice. Show them what real 
                     tool_name=args.get("tool_name"),
                     tool_args=args.get("tool_args", {}),
                 )
-            elif name in ("web_search", "social_search", "scrape_website", "competitor_analyze", "deep_scrape", "browse_website", "write_post", "write_email", "submit_directory", "set_active_campaign"):
+            elif name in ("web_search", "social_search", "scrape_website", "competitor_analyze", "deep_scrape", "browse_website", "write_post", "publish_post", "twitter_read", "write_email", "submit_directory", "set_active_campaign", "save_competitors"):
                 # LLM 直接调用工具名
                 action = AgentAction(
                     type=ActionType.TOOL_CALL,

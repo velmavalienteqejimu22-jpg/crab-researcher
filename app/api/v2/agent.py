@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agent", tags=["Agent"])
 
 # 全局会话存储（带 TTL 和用户隔离）
-_sessions: dict[str, AgentLoop] = {}
+_sessions: dict[str, AgentLoop] = {}  # 现在真正使用 AgentLoop（ReAct 循环）
 _session_owners: dict[str, int] = {}  # session_id -> user_id
 _session_last_active: dict[str, float] = {}  # session_id -> timestamp
 _SESSION_TTL = 1800  # 30 分钟无活动过期
@@ -138,18 +138,18 @@ async def agent_chat(
         experts.set_llm(llm)
         memory = GrowthMemory(base_dir=f".crabres/memory/{user_id}")
         tools = _get_or_create_tools(memory=memory)
-        runner = PipelineRunner(
+        loop = AgentLoop(
             session_id=session_id, llm_service=llm,
             tool_registry=tools, expert_pool=experts, memory=memory,
         )
-        _sessions[session_id] = runner
+        _sessions[session_id] = loop
         _session_owners[session_id] = user_id
 
-    runner = _sessions[session_id]
+    loop = _sessions[session_id]
     _session_last_active[session_id] = __import__('time').time()
 
     outputs: list[ChatResponse] = []
-    async for event in runner.run(req.message, language=req.language):
+    async for event in loop.run(req.message, language=req.language):
         outputs.append(ChatResponse(
             session_id=session_id,
             type=event.get("type", "message"),
@@ -187,19 +187,19 @@ async def agent_chat_stream(
         experts.set_llm(llm)
         memory = GrowthMemory(base_dir=f".crabres/memory/{user_id}")
         tools = _get_or_create_tools(memory=memory)
-        runner = PipelineRunner(
+        loop = AgentLoop(
             session_id=session_id, llm_service=llm,
             tool_registry=tools, expert_pool=experts, memory=memory,
         )
-        _sessions[session_id] = runner
+        _sessions[session_id] = loop
         _session_owners[session_id] = user_id
 
-    runner = _sessions[session_id]
+    loop = _sessions[session_id]
     _session_last_active[session_id] = __import__('time').time()
 
     async def event_generator():
         try:
-            async for event in runner.run(req.message, language=req.language):
+            async for event in loop.run(req.message, language=req.language):
                 data = json.dumps({
                     "session_id": session_id,
                     "type": event.get("type", "message"),
