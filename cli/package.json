@@ -1,12 +1,20 @@
 {
   "name": "crabres",
-  "version": "1.0.0",
-  "description": "CrabRes CLI — AI Growth Agent in your terminal",
+  "version": "2.0.0",
+  "description": "CrabRes CLI — AI Growth Agent in your terminal. Multi-touch interface for indie developers.",
   "main": "index.js",
   "bin": {
     "crabres": "./index.js"
   },
   "type": "module",
-  "keywords": ["growth", "marketing", "ai", "agent", "indie-hacker"],
-  "license": "MIT"
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["growth", "marketing", "ai", "agent", "indie-hacker", "saas", "cli", "growth-hacking"],
+  "author": "CrabRes",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/calebguo007/crab-researcher"
+  }
 }

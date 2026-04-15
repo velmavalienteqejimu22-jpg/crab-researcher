@@ -126,11 +126,15 @@ class Orchestrator:
         """
         ctx = OrchestratorContext(user_message=user_message, language=language)
         
-        # 加载已有的产品信息
+        # 加载已有的产品信息（包括 onboarding 时设置的 budget/target）
         product_in_memory = await self.memory.load("product")
         if product_in_memory and product_in_memory.get("raw_description"):
             ctx.product_info = product_in_memory
             ctx.has_product_info = True
+        
+        # 从 onboarding 消息中提取结构化信息（budget、target users 等）
+        # Onboarding 前端发送格式: "My product is called X. ... Goal: 100 users ... Monthly budget: $0."
+        self._extract_onboarding_context(ctx)
 
         stages = [
             (Stage.UNDERSTAND, self._stage_understand),
@@ -316,84 +320,62 @@ class Orchestrator:
         product_desc = ctx.product_info.get("raw_description", ctx.user_message)
         product_name = ctx.product_info.get("name", "")
         product_url = ctx.product_info.get("url", "")
-
-        # --- 确定性搜索 1: 产品竞品分析 ---
-        # 🔥 搜索查询要简洁精准，不要把整个产品描述塞进去
         target_platforms = ctx.product_info.get("target_platforms", [])
-        platform_str = " ".join(target_platforms[:2]) if target_platforms else ""
-        
-        if product_name:
-            search_query = f"{product_name} AI growth tool alternatives competitors 2024"
-        else:
-            search_query = f"{product_desc[:60]} competitors market analysis"
-        
-        result = await self._safe_tool_call("web_search", {"query": search_query, "num_results": 5})
-        if result and not result.get("error"):
-            ctx.search_results.append({"tool": "web_search", "query": search_query, "result": result})
-            ctx.tool_call_count += 1
 
-        # --- 确定性搜索 2: 目标平台的增长策略 ---
-        if ctx.tool_call_count < self.MAX_RESEARCH_TOOL_CALLS:
-            if target_platforms:
-                # 用户指定了目标平台 → 搜索该平台的增长策略
-                platform_query = f"{product_name or 'SaaS'} growth strategy {' '.join(target_platforms)} indie developer"
-            else:
-                platform_query = f"{product_name or product_desc[:40]} indie developer growth strategy reddit twitter"
-            
-            social_result = await self._safe_tool_call("social_search", {
-                "query": platform_query,
-                "platforms": ["reddit", "x", "hackernews"],
-            })
-            if social_result and not social_result.get("error"):
-                ctx.search_results.append({"tool": "social_search", "query": platform_query, "result": social_result})
-                ctx.tool_call_count += 1
-
-        # --- 确定性浏览: 如果有 URL，用浏览器打开 ---
+        # --- 浏览器优先：如果有 URL，先用浏览器打开获取第一手数据 ---
         import re
         urls_in_msg = re.findall(r'https?://\S+', ctx.user_message)
         if not urls_in_msg and product_url:
             urls_in_msg = [product_url]
         
-        for url in urls_in_msg[:1]:  # 最多浏览 1 个 URL
+        for url in urls_in_msg[:1]:
             if ctx.tool_call_count >= self.MAX_RESEARCH_TOOL_CALLS:
                 break
-            if time.time() - t0 > self.MAX_RESEARCH_TIME_SEC:
-                break
             yield {"type": "status", "content": f"Browsing {url[:60]}..."}
-            # 推送浏览器开始事件给前端 Browser 面板
             yield {"type": "browser_event", "action": "navigating", "url": url}
             browse_result = await self._safe_tool_call("browse_website", {"url": url}, timeout=90.0)
             if browse_result and not browse_result.get("error"):
                 ctx.browse_results.append({"url": url, "result": browse_result})
                 ctx.tool_call_count += 1
-                # 推送浏览器完成事件（含截图路径和页面标题）
                 yield {
-                    "type": "browser_event",
-                    "action": "loaded",
-                    "url": url,
+                    "type": "browser_event", "action": "loaded", "url": url,
                     "title": browse_result.get("title", ""),
                     "screenshot_path": browse_result.get("screenshot_path", ""),
                     "content_preview": browse_result.get("content_preview", "")[:200],
                 }
             else:
-                yield {"type": "browser_event", "action": "failed", "url": url, "error": str(browse_result.get("error", "unknown"))[:100]}
+                yield {"type": "browser_event", "action": "failed", "url": url,
+                       "error": str(browse_result.get("error", "unknown"))[:100]}
 
-        # --- LLM 决定补充搜索（如果还有配额） ---
+        # --- LLM 自主决定所有搜索查询 ---
+        # 给模型充分的自主权：它决定搜什么、用什么工具
+        # 代码只控制上限（MAX_RESEARCH_TOOL_CALLS 次，MAX_RESEARCH_TIME_SEC 秒）
         remaining_calls = self.MAX_RESEARCH_TOOL_CALLS - ctx.tool_call_count
-        remaining_time = self.MAX_RESEARCH_TIME_SEC - (time.time() - t0)
-        
-        if remaining_calls > 0 and remaining_time > 10:
-            # 让 LLM 基于已有结果决定还需要搜什么
-            extra_queries = await self._llm_suggest_searches(ctx, remaining_calls)
-            for eq in extra_queries:
+        if remaining_calls > 0:
+            search_plan = await self._llm_plan_research(ctx, remaining_calls)
+            
+            for step in search_plan:
                 if ctx.tool_call_count >= self.MAX_RESEARCH_TOOL_CALLS:
                     break
                 if time.time() - t0 > self.MAX_RESEARCH_TIME_SEC:
                     break
-                yield {"type": "status", "content": f"Searching: {eq[:50]}..."}
-                r = await self._safe_tool_call("web_search", {"query": eq, "num_results": 5})
+                
+                tool_name = step.get("tool", "web_search")
+                query = step.get("query", "")
+                if not query:
+                    continue
+                
+                yield {"type": "status", "content": f"Searching: {query[:60]}..."}
+                
+                if tool_name == "social_search":
+                    r = await self._safe_tool_call("social_search", {
+                        "query": query, "platforms": ["reddit", "x", "hackernews"],
+                    })
+                else:
+                    r = await self._safe_tool_call("web_search", {"query": query, "num_results": 5})
+                
                 if r and not r.get("error"):
-                    ctx.search_results.append({"tool": "web_search", "query": eq, "result": r})
+                    ctx.search_results.append({"tool": tool_name, "query": query, "result": r})
                     ctx.tool_call_count += 1
 
         # 自动保存竞品到记忆
@@ -664,39 +646,73 @@ RULES:
             logger.warning(f"Tool {tool_name} failed: {e}")
             return {"error": str(e)[:200]}
 
-    async def _llm_suggest_searches(self, ctx: OrchestratorContext, max_queries: int) -> list[str]:
-        """让 LLM 基于已有结果建议补充搜索"""
+    async def _llm_plan_research(self, ctx: OrchestratorContext, max_steps: int) -> list[dict]:
+        """让 LLM 规划整个搜索策略 — 模型决定搜什么、用什么工具
+        
+        返回: [{"tool": "web_search"|"social_search", "query": "..."}, ...]
+        """
         from app.agent.engine.llm_adapter import TaskTier
         
-        existing_queries = [r.get("query", "") for r in ctx.search_results]
-        existing_summary = "\n".join(f"- Already searched: {q}" for q in existing_queries)
+        target_platforms = ctx.product_info.get("target_platforms", [])
+        budget = ctx.product_info.get("monthly_budget", ctx.product_info.get("budget", ""))
+        goal = ctx.product_info.get("growth_target", ctx.product_info.get("goal", ""))
         
-        prompt = f"""Based on these existing search results, suggest {max_queries} additional search queries to fill gaps.
+        # 已有的搜索结果摘要
+        existing = ""
+        if ctx.search_results:
+            existing = "\nAlready searched:\n" + "\n".join(
+                f"- [{r.get('tool','')}] {r.get('query','')}" for r in ctx.search_results
+            )
+        if ctx.browse_results:
+            existing += "\nAlready browsed:\n" + "\n".join(
+                f"- {br.get('url','')} → {br.get('result',{}).get('title','')}" for br in ctx.browse_results
+            )
+        
+        prompt = f"""You are a growth research planner. Plan up to {max_steps} search queries for this product.
 
-Product: {ctx.product_info.get('raw_description', ctx.user_message)[:200]}
-{existing_summary}
+Product: {ctx.product_info.get('name', '')} — {ctx.product_info.get('raw_description', ctx.user_message)[:300]}
+User request: {ctx.user_message}
+Target platforms: {', '.join(target_platforms) if target_platforms else 'not specified'}
+Budget: {budget or 'not specified'}
+Growth goal: {goal or 'not specified'}
+{existing}
 
-Return ONLY a JSON array of strings, e.g., ["query1", "query2"]. No explanation."""
+Available tools:
+- web_search: General web search (Google). Good for competitors, market data, articles.
+- social_search: Search Reddit, X/Twitter, HackerNews. Good for user discussions, community insights.
+
+Return a JSON array of search steps. Each step: {{"tool": "web_search"|"social_search", "query": "concise search query"}}
+Be specific: use competitor names, platform names, concrete terms. Don't repeat what's already searched.
+Return ONLY the JSON array, no explanation."""
 
         try:
             response = await self.llm.generate(
-                system_prompt="You are a research assistant. Return only a JSON array of search queries.",
+                system_prompt="You are a research planner. Return only a JSON array.",
                 messages=[{"role": "user", "content": prompt}],
                 tier=TaskTier.PARSING,
-                max_tokens=200,
+                max_tokens=300,
             )
             raw = response.content.strip()
             if "```" in raw:
                 raw = raw.split("```")[1].split("```")[0]
                 if raw.startswith("json"):
                     raw = raw[4:]
-            queries = json.loads(raw)
-            if isinstance(queries, list):
-                # 去重
-                return [q for q in queries[:max_queries] if q not in existing_queries]
+            steps = json.loads(raw)
+            if isinstance(steps, list):
+                return steps[:max_steps]
         except Exception as e:
-            logger.debug(f"LLM suggest searches failed: {e}")
-        return []
+            logger.debug(f"LLM plan research failed: {e}, falling back to default queries")
+        
+        # 降级：如果 LLM 规划失败，用确定性查询
+        fallback = []
+        product_name = ctx.product_info.get("name", "")
+        if product_name:
+            fallback.append({"tool": "web_search", "query": f"{product_name} competitors alternatives 2024"})
+        if target_platforms:
+            fallback.append({"tool": "social_search", "query": f"{product_name or 'SaaS'} growth {' '.join(target_platforms[:2])}"})
+        else:
+            fallback.append({"tool": "social_search", "query": f"{product_name or ctx.user_message[:40]} indie developer growth"})
+        return fallback[:max_steps]
 
     async def _auto_save_competitors(self, ctx: OrchestratorContext):
         """从搜索结果中自动提取竞品"""
@@ -738,6 +754,37 @@ Return ONLY a JSON array of strings, e.g., ["query1", "query2"]. No explanation.
                 parts.append(f"Browsed {br['url']}: {title}\n{content}\n{analysis}")
         
         return "\n\n".join(parts) if parts else "No research data available."
+
+    def _extract_onboarding_context(self, ctx: OrchestratorContext):
+        """从 product_info 或历史消息中提取 onboarding 结构化信息"""
+        pi = ctx.product_info
+        if not pi:
+            return
+        
+        raw = pi.get("raw_description", "")
+        
+        # 提取 budget（如果还没有）
+        if not pi.get("monthly_budget"):
+            import re
+            budget_match = re.search(r'(?:budget|预算)[:\s]*\$?(\d+)', raw, re.IGNORECASE)
+            if budget_match:
+                pi["monthly_budget"] = budget_match.group(1)
+        
+        # 提取 target users（如果还没有）
+        if not pi.get("growth_target"):
+            import re
+            goal_match = re.search(r'(?:goal|目标)[:\s]*(\d+)\s*(?:users|用户)', raw, re.IGNORECASE)
+            if goal_match:
+                pi["growth_target"] = goal_match.group(1)
+        
+        # 提取 product type（如果还没有）
+        if not pi.get("type") or pi["type"] == "default":
+            import re
+            type_match = re.search(r'(?:product type|类型)[:\s]*(\w+)', raw, re.IGNORECASE)
+            if type_match:
+                pi["type"] = type_match.group(1).lower()
+        
+        ctx.product_info = pi
 
     def _detect_target_platforms(self, message: str) -> list[str]:
         """从用户消息中提取目标平台"""
