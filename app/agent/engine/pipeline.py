@@ -126,16 +126,34 @@ class PipelineRunner:
             return
 
         # 2. 短消息智能路由（用 LLM 判断意图，不再用 len < 50 硬判断）
-        if len(msg) < 80 and not self._has_product_signals(msg_lower):
+        # 🔥 如果已经有产品上下文（之前聊过 crabres 或有 product_info），跳过短消息路由直接进流水线
+        has_existing_product = bool(self.state.product_info.get("name")) or any(
+            self._is_self_referencing(m.get("content", ""))
+            for m in self.state.message_history[-6:]
+            if m.get("role") == "user"
+        )
+        if len(msg) < 80 and not self._has_product_signals(msg_lower) and not has_existing_product:
             intent = await self._classify_intent(msg)
             logger.info(f"Intent classification: {intent}")
 
             if intent == "self_awareness":
-                # 用户在问 CrabRes 自身相关的问题
-                reply = await self._self_aware_reply(msg)
-                yield {"type": "message", "content": reply}
-                self.state.message_history.append({"role": "assistant", "content": reply})
-                return
+                # 区分"问你是谁"和"给你自己做增长策略"
+                # 前者直接回复，后者进流水线
+                action_triggers = [
+                    "增长", "策略", "计划", "growth", "strategy", "plan",
+                    "做", "制定", "执行", "帮", "给", "make", "create", "build",
+                    "市场", "竞品", "分析", "market", "competitor", "analyze",
+                ]
+                wants_action = any(t in msg_lower for t in action_triggers)
+                if wants_action:
+                    # 用户要 CrabRes 为自己做事 → 注入自我认知后进完整流水线
+                    pass  # 继续往下走，进入流水线
+                else:
+                    # 纯粹问"你是谁" → 简短回复
+                    reply = await self._self_aware_reply(msg)
+                    yield {"type": "message", "content": reply}
+                    self.state.message_history.append({"role": "assistant", "content": reply})
+                    return
             elif intent == "greeting":
                 reply = await self._quick_reply(msg, "The user is greeting you. Reply warmly in 1-2 sentences and ask what they're building.")
                 yield {"type": "message", "content": reply}
@@ -256,7 +274,14 @@ class PipelineRunner:
         if raw_too_short and not is_self:
             info_score = min(info_score, 1)
 
-        if info_score < 2 and not is_self and self.state.ask_count < 2:
+        # 🔥 额外检查：如果历史对话中已经提到过 CrabRes 或有产品信息，不追问
+        has_prior_product_context = any(
+            self._is_self_referencing(m.get("content", ""))
+            for m in self.state.message_history[-6:]
+            if m.get("role") == "user"
+        ) or bool(self.state.product_info.get("name"))
+        
+        if info_score < 2 and not is_self and not has_prior_product_context and self.state.ask_count < 2:
             # 信息不够，用 LLM 生成一个自然的追问（不是硬编码）
             self.state.ask_count += 1
             lang = "Chinese" if self._language == "zh" else "English"
@@ -362,8 +387,16 @@ Do NOT say "Could you provide more details" — be specific about what you need.
         """Step 1: 从用户消息提取产品信息"""
         from app.agent.engine.llm_adapter import TaskTier
 
-        # 🔥 自我认知：如果用户说的是 CrabRes 自己，直接注入硬编码产品信息
-        if self._is_self_referencing(user_message):
+        # 🔥 自我认知：检查当前消息 OR 最近历史中是否提到 CrabRes
+        is_self_ref = self._is_self_referencing(user_message)
+        if not is_self_ref:
+            # 检查最近 6 条用户消息是否提到过 CrabRes
+            for m in self.state.message_history[-6:]:
+                if m.get("role") == "user" and self._is_self_referencing(m.get("content", "")):
+                    is_self_ref = True
+                    break
+        
+        if is_self_ref:
             info = dict(self.CRABRES_PRODUCT_INFO)
             info["raw_description"] = user_message
             info["is_self"] = True
@@ -668,7 +701,9 @@ Be brief and natural. 3-5 paragraphs max.""",
                     max_tokens=1500,
                 )
                 path = workspace / "reports" / f"competitor_analysis_{product_name.lower().replace(' ','_')}.md"
-                path.write_text(f"# Competitor Analysis: {product_name}\n\n{report.content}", encoding="utf-8")
+                file_content = f"# Competitor Analysis: {product_name}\n\n{report.content}"
+                path.write_text(file_content, encoding="utf-8")
+                await self._backup_file_to_memory(f"reports/{path.name}", file_content)
                 deliverables.append({"name": f"Competitor Analysis", "desc": f"reports/{path.name}", "path": str(path)})
             except Exception as e:
                 logger.warning(f"Failed to generate competitor report: {e}")
@@ -688,7 +723,9 @@ Use the product info and strategy to make it specific. Include the actual produc
                 max_tokens=1200,
             )
             path = workspace / "drafts" / f"first_posts_{product_name.lower().replace(' ','_')}.md"
-            path.write_text(f"# Content Drafts: {product_name}\n\n{draft.content}", encoding="utf-8")
+            file_content = f"# Content Drafts: {product_name}\n\n{draft.content}"
+            path.write_text(file_content, encoding="utf-8")
+            await self._backup_file_to_memory(f"drafts/{path.name}", file_content)
             deliverables.append({"name": "Content Drafts (Reddit + X)", "desc": f"drafts/{path.name}", "path": str(path)})
         except Exception as e:
             logger.warning(f"Failed to generate content drafts: {e}")
@@ -706,7 +743,9 @@ Base it on the strategy and research data provided.""",
                 max_tokens=1500,
             )
             path = workspace / "plans" / f"30day_growth_{product_name.lower().replace(' ','_')}.md"
-            path.write_text(f"# 30-Day Growth Plan: {product_name}\n\n{plan.content}", encoding="utf-8")
+            file_content = f"# 30-Day Growth Plan: {product_name}\n\n{plan.content}"
+            path.write_text(file_content, encoding="utf-8")
+            await self._backup_file_to_memory(f"plans/{path.name}", file_content)
             deliverables.append({"name": "30-Day Growth Plan", "desc": f"plans/{path.name}", "path": str(path)})
         except Exception as e:
             logger.warning(f"Failed to generate growth plan: {e}")
@@ -1177,15 +1216,17 @@ Respond in {lang}. {instruction}{product_ctx}""",
             system_prompt="""Classify the user's intent into exactly ONE of these categories:
 - self_awareness: User is asking about CrabRes itself (what it is, its capabilities, asking it to do something for itself)
 - greeting: Pure greeting with no substance
-- product: User is describing a product or asking for growth/marketing help. Must contain actual product info (name, what it does, target audience, etc.)
-- followup: User is directly answering a question CrabRes just asked (providing info that was requested)
-- chitchat: General chat, questions about features, casual remarks, or anything that doesn't contain actual product information
+- product: User is describing a product, giving product context, OR asking for growth/marketing/strategy help
+- followup: User is providing additional info that continues the conversation (answering a question, adding constraints, giving instructions like "制定计划"/"执行"/"开始")
+- chitchat: General chat, casual remarks, or anything unrelated to product growth
 
 CRITICAL RULES:
-- If the message is short and vague (like "历史记忆还有吗", "还在吗", "能做什么"), classify as "chitchat" NOT "product"
-- "product" requires ACTUAL product details (name + what it does). Vague phrases are NOT product descriptions
-- "followup" requires CrabRes to have just asked a specific question that this message answers
-- When in doubt between "product" and "chitchat", choose "chitchat" — it's safer to chat than to generate a garbage strategy
+- If the user mentions a PRODUCT NAME (even just "crabres") → "self_awareness" or "product", NOT "chitchat"
+- If the user is giving INSTRUCTIONS or TASKS (like "制定增长计划", "帮我分析", "开始执行") → "followup" or "product", NOT "chitchat"
+- If CrabRes just asked a question and the user is responding with any info → "followup"
+- "chitchat" is ONLY for truly unrelated messages (like "天气怎么样", "你好吗", random remarks)
+- If the message contains growth/strategy/marketing keywords → NEVER classify as "chitchat"
+- When in doubt, prefer "followup" over "chitchat" — it's better to act than to idle
 
 Reply with ONLY the category name, nothing else.""",
             messages=[{
@@ -1221,6 +1262,18 @@ Answer the user's question about yourself naturally and honestly. If they're ask
             max_tokens=500,
         )
         return response.content
+
+    async def _backup_file_to_memory(self, rel_path: str, content: str):
+        """备份 workspace 文件到 memory（部署重建后可恢复）"""
+        try:
+            backup_key = f"workspace_file_{rel_path.replace('/', '_')}"
+            await self.memory.save(backup_key, {
+                "rel_path": rel_path,
+                "content": content,
+                "backed_up_at": __import__('time').time(),
+            }, category="workspace_backup")
+        except Exception as e:
+            logger.debug(f"Failed to backup workspace file: {e}")
 
     # ========== 持久化 ==========
 

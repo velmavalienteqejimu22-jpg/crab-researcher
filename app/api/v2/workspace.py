@@ -14,8 +14,10 @@ from fastapi import APIRouter, HTTPException, Query
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/workspace", tags=["Workspace"])
 
-# workspace 根目录（与 pipeline.py 中一致）
-WORKSPACE_BASE = Path(".crabres/memory/global").parent / "workspace"
+# workspace 根目录
+# Pipeline 中: workspace = Path(memory.base_dir).parent / "workspace" = .crabres/memory/workspace
+# 这里保持一致
+WORKSPACE_BASE = Path(".crabres/memory/workspace")
 
 
 def _safe_path(rel_path: str) -> Path:
@@ -87,10 +89,17 @@ async def file_tree():
 
 @router.get("/files/read")
 async def read_file(path: str = Query(..., description="文件相对路径")):
-    """读取单个文件内容"""
+    """读取单个文件内容（支持从 memory 备份恢复）"""
     target = _safe_path(path)
+    
+    # 如果文件不存在，尝试从 memory 备份恢复
     if not target.exists() or not target.is_file():
-        raise HTTPException(status_code=404, detail="File not found")
+        recovered = await _try_recover_from_memory(path)
+        if recovered:
+            # 恢复成功，重新读取
+            target = _safe_path(path)
+        if not target.exists() or not target.is_file():
+            raise HTTPException(status_code=404, detail="File not found")
 
     # 只允许读取文本文件
     allowed_ext = {".md", ".txt", ".json", ".yaml", ".yml", ".csv", ".html", ".py", ".js", ".ts"}
@@ -124,6 +133,34 @@ async def delete_file(path: str = Query(..., description="文件相对路径")):
         return {"deleted": path}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete: {e}")
+
+
+async def _try_recover_from_memory(rel_path: str) -> bool:
+    """尝试从 memory 备份中恢复文件"""
+    try:
+        # 扫描所有用户的 memory 目录，查找备份的文件内容
+        memory_root = Path(".crabres/memory")
+        if not memory_root.exists():
+            return False
+        
+        for user_dir in memory_root.iterdir():
+            if not user_dir.is_dir() or user_dir.name == "workspace":
+                continue
+            # 检查 workspace_backup 分类
+            backup_file = user_dir / "workspace_backup" / rel_path.replace("/", "_") + ".json"
+            if backup_file.exists():
+                import json
+                data = json.loads(backup_file.read_text(encoding="utf-8"))
+                content = data.get("content", "")
+                if content:
+                    target = WORKSPACE_BASE / rel_path
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text(content, encoding="utf-8")
+                    logger.info(f"Recovered workspace file from memory backup: {rel_path}")
+                    return True
+    except Exception as e:
+        logger.warning(f"Failed to recover file from memory: {e}")
+    return False
 
 
 @router.get("/stats")
