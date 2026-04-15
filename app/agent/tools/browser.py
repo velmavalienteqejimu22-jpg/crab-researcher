@@ -20,28 +20,53 @@ from app.agent.tools import BaseTool, ToolDefinition
 
 logger = logging.getLogger(__name__)
 
-# Playwright 延迟导入（不是所有环境都装了）
+# 浏览器引擎：优先 Patchright（反检测），降级 Playwright
 _playwright = None
 _browser = None
+_engine_name = "none"
 
 
 async def _get_browser():
-    """延迟初始化 Playwright browser（单例）"""
-    global _playwright, _browser
+    """延迟初始化浏览器（单例）
+    
+    优先级：Patchright（反检测分支）> Playwright > None（降级 httpx）
+    Patchright 修改了 CDP 协议特征，能绕过大部分 Bot Detection。
+    """
+    global _playwright, _browser, _engine_name
     if _browser:
         return _browser
 
+    # 优先尝试 Patchright（反检测版 Playwright）
     try:
-        from playwright.async_api import async_playwright
+        from patchright.async_api import async_playwright
         _playwright = await async_playwright().start()
         _browser = await _playwright.chromium.launch(
             headless=True,
             args=['--no-sandbox', '--disable-dev-shm-usage'],
         )
-        logger.info("Playwright browser initialized")
+        _engine_name = "patchright"
+        logger.info("🛡️ Browser initialized with Patchright (anti-detection)")
         return _browser
     except Exception as e:
-        logger.warning(f"Playwright not available: {e}")
+        logger.info(f"Patchright not available ({e}), trying Playwright...")
+
+    # 降级到普通 Playwright
+    try:
+        from playwright.async_api import async_playwright
+        _playwright = await async_playwright().start()
+        _browser = await _playwright.chromium.launch(
+            headless=True,
+            args=[
+                '--no-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-blink-features=AutomationControlled',
+            ],
+        )
+        _engine_name = "playwright"
+        logger.info("🌐 Browser initialized with Playwright (standard)")
+        return _browser
+    except Exception as e:
+        logger.warning(f"No browser engine available: {e}")
         return None
 
 

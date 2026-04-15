@@ -43,29 +43,48 @@ class BrowserCrawler:
         self._context = None
 
     async def _ensure_browser(self):
-        """确保浏览器实例存在"""
+        """确保浏览器实例存在
+        
+        优先 Patchright（反检测），降级 Playwright。
+        """
         if self._browser and self._browser.is_connected():
             return
 
+        engine = "none"
+
+        # 优先 Patchright
         try:
-            from playwright.async_api import async_playwright
+            from patchright.async_api import async_playwright
             pw = await async_playwright().start()
             self._browser = await pw.chromium.launch(
                 headless=True,
-                args=[
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                ],
+                args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
             )
-            self._context = await self._browser.new_context(
-                viewport={"width": 1280, "height": 720},
-                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            )
-            logger.info("🌐 BrowserCrawler: Playwright browser ready")
-        except Exception as e:
-            logger.error(f"🌐 BrowserCrawler: failed to start browser: {e}")
-            raise
+            engine = "patchright"
+        except Exception:
+            # 降级 Playwright
+            try:
+                from playwright.async_api import async_playwright
+                pw = await async_playwright().start()
+                self._browser = await pw.chromium.launch(
+                    headless=True,
+                    args=[
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu",
+                        "--disable-blink-features=AutomationControlled",
+                    ],
+                )
+                engine = "playwright"
+            except Exception as e:
+                logger.error(f"🌐 BrowserCrawler: no browser engine available: {e}")
+                raise
+
+        self._context = await self._browser.new_context(
+            viewport={"width": 1280, "height": 720},
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        )
+        logger.info(f"🌐 BrowserCrawler: browser ready (engine={engine})")
 
     async def crawl(self, url: str, screenshot: bool = True, timeout: int = 30) -> dict:
         """
@@ -87,6 +106,7 @@ class BrowserCrawler:
         await self._ensure_browser()
 
         page = await self._context.new_page()
+
         result = {
             "url": url,
             "crawled_at": time.time(),
