@@ -122,12 +122,29 @@ async def read_file(path: str = Query(..., description="文件相对路径")):
         if not target.exists() or not target.is_file():
             raise HTTPException(status_code=404, detail="File not found")
 
-    # 只允许读取文本文件
-    allowed_ext = {".md", ".txt", ".json", ".yaml", ".yml", ".csv", ".html", ".py", ".js", ".ts"}
-    if target.suffix.lower() not in allowed_ext:
+    # 文本文件
+    text_ext = {".md", ".txt", ".json", ".yaml", ".yml", ".csv", ".html", ".py", ".js", ".ts"}
+    # 图片文件（返回 base64 或直接二进制）
+    image_ext = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
+    
+    ext = target.suffix.lower()
+    if ext not in text_ext and ext not in image_ext:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {target.suffix}")
 
     try:
+        if ext in image_ext:
+            # 图片文件 → 返回二进制流
+            from fastapi.responses import FileResponse
+            media_types = {
+                ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml",
+            }
+            return FileResponse(
+                path=str(target),
+                media_type=media_types.get(ext, "application/octet-stream"),
+                filename=target.name,
+            )
+        
         content = target.read_text(encoding="utf-8")
         return {
             "path": path,

@@ -333,19 +333,29 @@ class Orchestrator:
                 break
             yield {"type": "status", "content": f"Browsing {url[:60]}..."}
             yield {"type": "browser_event", "action": "navigating", "url": url}
-            browse_result = await self._safe_tool_call("browse_website", {"url": url}, timeout=90.0)
+            browse_result = await self._safe_tool_call("browse_website", {"url": url}, timeout=45.0)
             if browse_result and not browse_result.get("error"):
                 ctx.browse_results.append({"url": url, "result": browse_result})
                 ctx.tool_call_count += 1
+                # 适配三种引擎的返回格式
+                engine = browse_result.get("engine", "unknown")
+                title = browse_result.get("title", "")
+                preview = browse_result.get("content_preview", "")[:200]
+                screenshot = browse_result.get("screenshot_path", "")
+                browse_file = browse_result.get("browse_file", "")
                 yield {
                     "type": "browser_event", "action": "loaded", "url": url,
-                    "title": browse_result.get("title", ""),
-                    "screenshot_path": browse_result.get("screenshot_path", ""),
-                    "content_preview": browse_result.get("content_preview", "")[:200],
+                    "title": title,
+                    "screenshot_path": screenshot,
+                    "content_preview": preview,
+                    "engine": engine,
+                    "browse_file": browse_file,
                 }
+                logger.info(f"Browse success: {url} via {engine}, title='{title[:40]}', {browse_result.get('content_length', 0)} chars")
             else:
-                yield {"type": "browser_event", "action": "failed", "url": url,
-                       "error": str(browse_result.get("error", "unknown"))[:100]}
+                error_msg = str(browse_result.get("error", "unknown"))[:100] if browse_result else "No result"
+                yield {"type": "browser_event", "action": "failed", "url": url, "error": error_msg}
+                logger.warning(f"Browse failed: {url} — {error_msg}")
 
         # --- LLM 自主决定所有搜索查询 ---
         # 给模型充分的自主权：它决定搜什么、用什么工具

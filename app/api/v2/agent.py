@@ -219,6 +219,8 @@ async def agent_chat_stream(
                     event_data["screenshot_path"] = event.get("screenshot_path", "")
                     event_data["content_preview"] = event.get("content_preview", "")
                     event_data["error"] = event.get("error", "")
+                    event_data["engine"] = event.get("engine", "")
+                    event_data["browse_file"] = event.get("browse_file", "")
                 data = json.dumps(event_data, ensure_ascii=False)
                 yield f"data: {data}\n\n"
         except Exception as e:

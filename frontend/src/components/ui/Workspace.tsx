@@ -45,6 +45,8 @@ interface BrowserState {
   screenshotPath?: string
   contentPreview?: string
   error?: string
+  engine?: string       // "jina_reader" | "playwright" | "httpx"
+  browseFile?: string   // 浏览内容保存的文件路径
 }
 
 interface WorkspaceProps {
@@ -334,6 +336,11 @@ export function Workspace({ visible, initialFile, logs = [], refreshKey = 0, bro
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
                         <span className="text-[11px] font-medium text-primary truncate">{browserState.title || 'Page loaded'}</span>
+                        {browserState.engine && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-brand/10 text-brand font-mono shrink-0">
+                            {browserState.engine === 'jina_reader' ? 'Jina' : browserState.engine === 'playwright' ? 'Browser' : 'HTTP'}
+                          </span>
+                        )}
                       </div>
                       <p className="text-[10px] text-muted font-mono truncate">{browserState.url}</p>
                       {browserState.screenshotPath && (
@@ -347,7 +354,9 @@ export function Workspace({ visible, initialFile, logs = [], refreshKey = 0, bro
                         </div>
                       )}
                       {browserState.contentPreview && (
-                        <p className="text-[10px] text-secondary leading-relaxed line-clamp-3">{browserState.contentPreview}</p>
+                        <div className="rounded-lg bg-[var(--bg-secondary)] border border-border p-2">
+                          <p className="text-[10px] text-secondary leading-relaxed line-clamp-5">{browserState.contentPreview}</p>
+                        </div>
                       )}
                     </div>
                   ) : (

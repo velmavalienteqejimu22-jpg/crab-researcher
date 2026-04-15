@@ -952,9 +952,15 @@ The user came here because they're tired of generic advice. Show them what real 
             logger.info("Skipping deliverables: product info too vague")
             return []
 
-        workspace = self.workspace
-        for sub in ["drafts", "reports", "plans"]:
-            (workspace / sub).mkdir(exist_ok=True)
+        # 优先使用持久化路径（Render Disk），降级到容器内路径
+        import os as _os
+        _render_disk = _os.environ.get("RENDER_DISK_PATH", "")
+        if _render_disk:
+            workspace = Path(_render_disk) / "workspace"
+        else:
+            workspace = self.workspace
+        for sub in ["drafts", "reports", "plans", "assets"]:
+            (workspace / sub).mkdir(parents=True, exist_ok=True)
 
         deliverables = []
         lang = "Chinese" if getattr(self, '_language', 'en') == "zh" else "English"

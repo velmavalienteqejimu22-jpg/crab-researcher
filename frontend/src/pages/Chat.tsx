@@ -72,6 +72,8 @@ export function Chat({ creature, onBack, onPlan }: ChatProps) {
     screenshotPath?: string
     contentPreview?: string
     error?: string
+    engine?: string
+    browseFile?: string
   }>({ status: 'idle' })
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -167,13 +169,15 @@ export function Chat({ creature, onBack, onPlan }: ChatProps) {
                 addLog('browser', `Navigating to ${event.url || ''}`)
                 setBrowserState({ status: 'loading', url: event.url || '' })
               } else if (event.action === 'loaded') {
-                addLog('browser', `Loaded: ${event.title || event.url || ''}`)
+                addLog('browser', `Loaded: ${event.title || event.url || ''} (${event.engine || 'unknown'})`)
                 setBrowserState({
                   status: 'loaded',
                   url: event.url || '',
                   title: event.title || '',
                   screenshotPath: event.screenshot_path || '',
                   contentPreview: event.content_preview || '',
+                  engine: event.engine || '',
+                  browseFile: event.browse_file || '',
                 })
               } else if (event.action === 'failed') {
                 addLog('browser', `Failed: ${event.url || ''} — ${event.error || ''}`)
