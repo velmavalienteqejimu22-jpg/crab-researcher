@@ -117,36 +117,47 @@ class AgentLoop:
         """
         处理一条用户消息，yield 流式输出
         
+        v4.0: 委托给 Orchestrator（确定性阶段编排器）
+        Orchestrator 控制 UNDERSTAND → RESEARCH → EXPERT → SYNTHESIZE → DELIVER 五个阶段
+        每个阶段有明确的入口/退出条件和调用次数上限
+        
         Args:
             user_message: 用户消息
-            language: 用户选择的语言 ("en" 或 "zh")，从前端 Settings 传入
+            language: 用户选择的语言 ("en" 或 "zh")
         """
         self._running = True
-        self._language = language  # 存储供后续方法使用
+        self._language = language
         self.state.turn_count += 1
         self.state.last_active_at = time.time()
         self.state.is_waiting_for_user = False
 
-        # 检测 @expert_id 私聊模式
-        import re
-        at_match = re.match(r'^@(\w+)\s+(.+)', user_message.strip(), re.DOTALL)
+        # 如果是新启动的会话，尝试从磁盘加载历史
+        if not self._message_history:
+            await self._load_state()
+
+        # 写前日志
+        await self._write_ahead_log(user_message)
+
+        # 自动提取和存储产品信息
+        await self._maybe_save_product_info(user_message)
+
+        # 自动检测社媒链接并追踪
+        await self._maybe_track_posted_url(user_message)
+
+        # 记录用户消息到历史
+        self._message_history.append({"role": "user", "content": user_message})
+
+        # 检测 @expert_id 私聊模式 — 跳过编排器，直接和专家对话
+        import re as _re
+        at_match = _re.match(r'^@(\w+)\s+(.+)', user_message.strip(), _re.DOTALL)
         if at_match:
             expert_id = at_match.group(1).lower()
             expert_task = at_match.group(2).strip()
             expert = self.experts.get(expert_id)
             if expert:
-                # 直接和专家对话，跳过 Coordinator
                 yield {"type": "status", "content": f"Connecting you directly with {expert.name}..."}
                 yield {"type": "expert_thinking", "expert_id": expert_id, "content": f"{expert.name} is analyzing your question..."}
-
-                # 写前日志
-                await self._write_ahead_log(user_message)
-                self._message_history.append({"role": "user", "content": user_message})
-
-                # 构建上下文
-                context = await self._build_context(user_message)
-
-                # 直接调度专家
+                context = await self._build_context("")  # 不重复加 user_message
                 try:
                     expert_output = await expert.analyze(context, expert_task)
                     self._message_history.append({"role": "assistant", "content": f"[Expert: {expert_id}] {expert_output[:1500]}"})
@@ -154,13 +165,8 @@ class AgentLoop:
                     yield {"type": "expert_thinking", "expert_id": expert_id, "content": expert_output}
                 except Exception as e:
                     yield {"type": "error", "content": f"Expert {expert_id} encountered an error: {str(e)[:200]}"}
-
                 await self._persist_state()
                 return
-
-        # 记录 Trust Level session
-        await self.trust.record_session()
-        trust_permissions = await self.trust.get_permissions()
 
         # 🧠 Deep Strategy 触发检测（ULTRAPLAN）
         from app.agent.engine.deep_strategy import should_trigger_deep_strategy
@@ -179,18 +185,17 @@ class AgentLoop:
                 yield {
                     "type": "message",
                     "content": (
-                        f"🔬 **Deep Strategy Session launched** (ID: `{job.id}`)\n\n"
+                        f"\U0001f52c **Deep Strategy Session launched** (ID: `{job.id}`)\n\n"
                         f"This is a complex request that requires thorough research. "
-                        f"I'm running a full expert roundtable in the background with 8 specialists.\n\n"
-                        f"**What's happening:**\n"
+                        f"I\'m running a full expert roundtable in the background with 8 specialists.\n\n"
+                        f"**What\'s happening:**\n"
                         f"1. Deep market research (5-8 search queries)\n"
                         f"2. Full expert roundtable (8 experts analyzing in parallel)\n"
                         f"3. CGO synthesizing final comprehensive strategy\n\n"
-                        f"This will take 2-5 minutes. I'll notify you when it's ready.\n"
+                        f"This will take 2-5 minutes. I\'ll notify you when it\'s ready.\n"
                         f"In the meantime, feel free to ask me anything else!"
                     ),
                 }
-                self._message_history.append({"role": "user", "content": user_message})
                 self._message_history.append({"role": "assistant", "content": f"[Deep Strategy launched: {job.id}]"})
                 await self._persist_state()
                 return
@@ -198,479 +203,29 @@ class AgentLoop:
                 logger.error(f"Deep Strategy failed to launch: {e}")
                 yield {"type": "status", "content": "Deep strategy unavailable, proceeding normally..."}
 
-        # 🎭 Mood Sensing — 情绪感知
-        mood_signal = self.mood_sensor.detect(user_message)
-        mood_injection = ""
-        if mood_signal:
-            mood_injection = self.mood_sensor.get_prompt_injection(mood_signal)
-            logger.info(f"Mood sensing: {mood_signal.mood.value} (confidence={mood_signal.confidence:.2f})")
-
-        # ========== 硬编码保底层（不依赖 LLM 遵循指令）==========
+        # ===== 主流程：委托给 Orchestrator =====
+        from app.agent.engine.orchestrator import Orchestrator
+        orchestrator = Orchestrator(self)
         
-        # 1. 自我认知注入：如果用户问"你是什么"或提到 crabres，直接回答不走 LLM 决策
-        msg_lower = user_message.lower().strip()
-        self_awareness_triggers = [
-            "what are you", "who are you", "你是什么", "你是谁",
-            "what do you do", "你做什么", "介绍一下你", "introduce yourself",
-        ]
-        if any(t in msg_lower for t in self_awareness_triggers):
-            self._message_history.append({"role": "user", "content": user_message})
-            lang = self._language
-            lang_name = "Chinese (中文)" if lang == "zh" else "English"
-            from app.agent.engine.llm_adapter import TaskTier as _SelfTier
-            self_reply = await self.llm.generate(
-                system_prompt=f"""You are CrabRes, an AI growth strategy agent AND a product yourself. Respond in {lang_name}.
-
-About yourself:
-- You are a SaaS product (crab-researcher.vercel.app) that helps indie developers and small teams grow their products
-- You have 13 AI expert advisors covering market research, content strategy, social media, paid ads, partnerships, etc.
-- You can browse the web, search social media, analyze competitors, and execute growth actions (post to Reddit, send emails, etc.)
-- You were built by an indie developer — you understand the struggle
-- You ARE a product that needs growth strategies too
-
-Answer naturally and warmly. 2-3 sentences max. Then ask what they're building.""",
-                messages=self._message_history[-6:],
-                tier=_SelfTier.THINKING,
-                max_tokens=200,
-            )
-            reply = self_reply.content
-            self._message_history.append({"role": "assistant", "content": reply})
-            yield {"type": "message", "content": reply}
-            await self._persist_state()
-            return
-
-        # 2. 产品信息检测：用户消息包含足够产品信息 → 直接进入 research，不让 LLM 决定"要不要先问"
-        import re
-        has_product_info = self._detect_product_info(user_message)
-        product_in_memory = await self.memory.load("product")
-        has_product_in_memory = bool(product_in_memory and product_in_memory.get("raw_description"))
-        
-        # 3. ask_user 计数器：连续 ask 不超过 1 次
-        self._ask_count = getattr(self, '_ask_count', 0)
-        
-        # 4. 已 scrape 的 URL 去重集合
-        if not hasattr(self, '_scraped_urls'):
-            self._scraped_urls = set()
-
-        # ========== 保底层结束 ==========
-
-        # 如果是新启动的会话（或进程重启），尝试从磁盘加载历史
-        if not self._message_history:
-            await self._load_state()
-
-        # 写前日志（学 Claude Code）
-        await self._write_ahead_log(user_message)
-
-        # 自动提取和存储产品信息（如果用户消息包含产品描述）
-        await self._maybe_save_product_info(user_message)
-
-        # 自动检测用户贴回的社媒链接并开始追踪
-        await self._maybe_track_posted_url(user_message)
-
-        # 加载记忆上下文
-        context = await self._build_context(user_message)
-        context["trust"] = trust_permissions
-        context["mood_injection"] = mood_injection  # 情绪感知注入
-
-        iteration = 0
-        tool_call_count = 0  # 追踪工具调用次数
-
-        # ========== 主动搜索层（不等 LLM 决定）==========
-        # 如果检测到产品信息，直接启动搜索，不让 Coordinator 有机会选择 ask_user
-        if has_product_info and not context.get("tool_results"):
-            yield {"type": "status", "content": "Researching your product market..."}
-
-            # 构建搜索查询
-            search_query = user_message[:120]
-            # 如果用户提到了竞品，搜索竞品
-            competitor_keywords = ['竞品', '竞争', 'competitor', 'competing', 'rival', 'alternative', 'vs']
-            is_competitor_mention = any(kw in msg_lower for kw in competitor_keywords)
-
-            if is_competitor_mention:
-                # 提取竞品名（取掉竞品关键词后的实体词）
-                import re as _re
-                # 去掉常见修饰词，剩下的就是竞品名
-                competitor_name = _re.sub(
-                    r'(是|竞品|竞争对手|对手|competitor|is a|is my|the)', '',
-                    user_message, flags=_re.IGNORECASE
-                ).strip()
-                if competitor_name:
-                    search_query = f"{competitor_name} product features pricing reviews"
-
-            # 执行预搜索
-            pre_search_action = AgentAction(
-                type=ActionType.TOOL_CALL,
-                content="Pre-research: searching product market",
-                tool_name="web_search",
-                tool_args={"query": search_query, "num_results": 5},
-            )
-            pre_result = await self._execute_tool(pre_search_action)
-            context = await self._incorporate_result(context, pre_search_action, pre_result)
-            result_summary = json.dumps(pre_result, ensure_ascii=False, default=str)[:2000]
-            self._message_history.append({
-                "role": "assistant",
-                "content": f"[Tool: web_search] Result: {result_summary}",
-            })
-            tool_call_count += 1
-            self.state.actions_history.append(pre_search_action)
-
-            # 如果是竞品查询且找到了URL，自动 scrape 竞品网站
-            if is_competitor_mention and pre_result and isinstance(pre_result, dict):
-                results = pre_result.get("results", [])
-                if results and results[0].get("url"):
-                    competitor_url = results[0]["url"]
-                    yield {"type": "status", "content": f"Analyzing competitor: {competitor_url[:60]}..."}
-                    scrape_action = AgentAction(
-                        type=ActionType.TOOL_CALL,
-                        content="Scraping competitor website",
-                        tool_name="scrape_website",
-                        tool_args={"url": competitor_url},
-                    )
-                    scrape_result = await self._execute_tool(scrape_action)
-                    context = await self._incorporate_result(context, scrape_action, scrape_result)
-                    scrape_summary = json.dumps(scrape_result, ensure_ascii=False, default=str)[:2000]
-                    self._message_history.append({
-                        "role": "assistant",
-                        "content": f"[Tool: scrape_website] Result: {scrape_summary}",
-                    })
-                    tool_call_count += 1
-                    self.state.actions_history.append(scrape_action)
-                    if competitor_url:
-                        self._scraped_urls.add(competitor_url)
-
-            # 自动提取并保存竞品到记忆（不依赖 LLM，从搜索结果中提取）
-            await self._auto_save_competitors_from_results(context)
-
-            logger.info(f"Proactive search completed: {tool_call_count} tool calls before Coordinator")
-        # ========== 主动搜索层结束 ==========
-
-        while self._running and iteration < self._max_loop_iterations:
-            iteration += 1
-            try:
-                # 🔥 强制停止搜索：如果已经做了 3+ 轮工具调用，注入强制指令
-                if tool_call_count >= 3:
-                    tool_results = context.get("tool_results", [])
-                    num_results = len(tool_results)
-                    force_msg = {
-                        "role": "user",
-                        "content": (
-                            f"[SYSTEM OVERRIDE] You have completed {tool_call_count} research rounds "
-                            f"and collected {num_results} data points. STOP SEARCHING. "
-                            f"You MUST now either: (1) call consult_roundtable with 3-4 experts to analyze the data, "
-                            f"or (2) call output with your final strategy. "
-                            f"Do NOT call any more search tools. Research phase is OVER."
-                        ),
-                    }
-                    # 注入到 context messages 的末尾
-                    msgs = context.get("messages", [])
-                    if not any("[SYSTEM OVERRIDE]" in m.get("content", "") for m in msgs):
-                        msgs.append(force_msg)
-                        context["messages"] = msgs
-                        logger.info(f"Injected SYSTEM OVERRIDE: {tool_call_count} tool calls done, forcing output")
-
-                # 1. THINK: 让 Coordinator（首席增长官）决定下一步
-                yield {"type": "status", "content": "Coordinator deciding next tactical move..."}
-                decision = await self._think(context)
-
-                # ========== 硬编码决策拦截层 ==========
-                
-                # 拦截 1: ask_user — 如果有产品信息，第一次就拦截，不允许任何 ask
-                if decision.type == ActionType.ASK_USER:
-                    self._ask_count += 1
-                    if has_product_info or has_product_in_memory:
-                        # 有产品信息就不该问 — 立刻强制搜索
-                        logger.info(f"OVERRIDE: ask blocked (has product info), forcing web_search")
-                        product_desc = user_message if has_product_info else product_in_memory.get("raw_description", "")
-                        decision = AgentAction(
-                            type=ActionType.TOOL_CALL,
-                            content="Researching your product market",
-                            tool_name="web_search",
-                            tool_args={"query": f"{product_desc[:100]} competitors market analysis"},
-                        )
-                    elif self._ask_count > 1:
-                        # 没有产品信息，但已经问过一次了 — 不再问，给兜底回复
-                        logger.info("OVERRIDE: ask_count > 1 without product info → giving helpful output")
-                        lang = getattr(self, '_language', 'en')
-                        msg = ("告诉我你在做什么产品就行，一句话就够。比如'帮独立开发者增长的AI工具'，我立刻开始研究。"
-                               if lang == "zh" else
-                               "Just tell me what you're building — even one sentence like 'AI resume tool for job seekers'. I'll start researching immediately.")
-                        decision = AgentAction(type=ActionType.OUTPUT, content=msg)
-                else:
-                    self._ask_count = 0  # 不是 ask → 重置计数
-                
-                # 拦截 2: 工具去重 — 同一 URL 不重复 scrape
-                if decision.type == ActionType.TOOL_CALL and decision.tool_name in ("scrape_website", "browse_website", "deep_scrape"):
-                    url = (decision.tool_args or {}).get("url", "")
-                    if url and url in self._scraped_urls:
-                        logger.info(f"OVERRIDE: URL already scraped, skipping: {url[:60]}")
-                        # 跳过重复的 scrape，换成 web_search
-                        product_desc = (await self.memory.load("product") or {}).get("raw_description", user_message)
-                        decision = AgentAction(
-                            type=ActionType.TOOL_CALL,
-                            content="Searching for market data",
-                            tool_name="web_search",
-                            tool_args={"query": f"{product_desc[:80]} market size competitors pricing"},
-                        )
-                    elif url:
-                        self._scraped_urls.add(url)
-                
-                # 拦截 3: 同一个 web_search query 不重复搜索
-                if decision.type == ActionType.TOOL_CALL and decision.tool_name == "web_search":
-                    query = (decision.tool_args or {}).get("query", "")
-                    if not hasattr(self, '_searched_queries'):
-                        self._searched_queries = set()
-                    if query and query in self._searched_queries:
-                        logger.info(f"OVERRIDE: query already searched, skipping: {query[:60]}")
-                        continue  # 跳过这次迭代
-                    elif query:
-                        self._searched_queries.add(query)
-
-                # ========== 拦截层结束 ==========
-
-                if decision.type == ActionType.OUTPUT:
-                    content = decision.content
-
-                    # 🔥 强制圆桌检查：如果做了研究但跳过了专家讨论，强制触发一轮圆桌
-                    tool_results = context.get("tool_results", [])
-                    has_research = len(tool_results) >= 2
-                    has_experts = len(self.state.expert_outputs) > 0
-                    if has_research and not has_experts and iteration < self._max_loop_iterations - 2:
-                        logger.info("Forcing roundtable: research done but no experts consulted")
-                        yield {"type": "status", "content": "Assembling expert roundtable for analysis..."}
-                        # 🔥 Harness：根据产品类型智能选择专家
-                        from app.agent.engine.context_engine import select_roundtable_experts
-                        product_type = context.get("product", {}).get("type", "default")
-                        expert_ids = select_roundtable_experts(product_type, context.get("user_message", ""))
-                        task = f"Analyze this product and create a growth strategy based on the research data. Product: {context.get('user_message', '')}. Research results available in context."
-                        async for evt in self._run_roundtable(expert_ids, task, context):
-                            if evt.get("type") == "expert_thinking":
-                                eid = evt.get("expert_id", "")
-                                self.state.expert_outputs[eid] = evt.get("content", "")
-                                context.setdefault("expert_outputs", {})[eid] = evt.get("content", "")
-                            yield evt
-                        # 圆桌会输出自己的 message，不需要再输出 Coordinator 的
-                        break
-
-                    # 自动 Critic 审核（如果输出足够长且是策略内容）
-                    if len(content) > 500 and self.state.turn_count >= 2:
-                        critic = self.experts.get("critic")
-                        if critic:
-                            yield {"type": "status", "content": "Strategy Critic reviewing..."}
-                            try:
-                                review = await critic.analyze(context, f"Review this growth strategy for quality, feasibility, and specificity:\n\n{content[:2000]}")
-                                if review and "❌" in review:
-                                    # Critic 发现严重问题，加到输出里
-                                    content += f"\n\n---\n⚖️ **Critic Review:**\n{review}"
-                                    yield {"type": "expert_thinking", "expert_id": "critic", "content": review}
-                            except Exception as e:
-                                logger.warning(f"Critic review failed: {e}")
-
-                    self._message_history.append({"role": "assistant", "content": content})
-                    await self._save_output_to_memory(content)
-                    yield {"type": "message", "content": content}
-
-                    # Harness: 如果输出是策略内容且有研究数据，也生成交付物
-                    if len(content) > 500 and len(tool_results) >= 2:
-                        yield {"type": "status", "content": "Preparing deliverables..."}
-                        try:
-                            deliverables = await self._generate_deliverables(context, content, self.state.expert_outputs)
-                            if deliverables:
-                                files_msg = "\n".join(f"- {d['name']}: {d['desc']}" for d in deliverables)
-                                yield {"type": "message", "content": f"I've prepared these for you:\n\n{files_msg}\n\nYou can find them in your workspace."}
-                        except Exception as e:
-                            logger.warning(f"Deliverables generation failed: {e}")
-                    break
-
-                elif decision.type == ActionType.ASK_USER:
-                    # 需要用户提供信息
-                    self._message_history.append({"role": "assistant", "content": decision.content})
-                    yield {"type": "question", "content": decision.content}
-                    self.state.is_waiting_for_user = True
-                    break
-
-                elif decision.type == ActionType.TOOL_CALL:
-                    # 2. ACT: 执行工具（支持并发）
-                    yield {"type": "status", "content": f"Researching: {decision.content}..."}
-
-                    # 检查是否有多个工具调用需要并发
-                    if hasattr(decision, 'parallel_tools') and decision.parallel_tools:
-                        # 并发执行所有工具
-                        tasks = [self._execute_tool(d) for d in [decision] + decision.parallel_tools]
-                        results = await asyncio.gather(*tasks, return_exceptions=True)
-                        for j, (d, r) in enumerate(zip([decision] + decision.parallel_tools, results)):
-                            if isinstance(r, Exception):
-                                r = {"error": str(r)}
-                            context = await self._incorporate_result(context, d, r)
-                            result_summary = json.dumps(r, ensure_ascii=False, default=str)[:1500]
-                            self._message_history.append({
-                                "role": "assistant",
-                                "content": f"[Tool: {d.tool_name}] Result: {result_summary}",
-                            })
-                    else:
-                        result = await self._execute_tool(decision)
-                        context = await self._incorporate_result(context, decision, result)
-                        result_summary = json.dumps(result, ensure_ascii=False, default=str)[:2000]
-                        self._message_history.append({
-                            "role": "assistant",
-                            "content": f"[Tool: {decision.tool_name}] Result: {result_summary}",
-                        })
-                    
-                    tool_call_count += 1
-
-                elif decision.type == ActionType.EXPERT:
-                    # 调度专家 — 增加模拟"思考片段"让前端可视化更真实
-                    expert = self.experts.get(decision.expert_id)
-                    expert_name = expert.name if expert else decision.expert_id
-                    
-                    yield {"type": "status", "content": f"Consulting {expert_name}..."}
-                    yield {"type": "expert_thinking", "expert_id": decision.expert_id, "content": f"{expert_name} is analyzing context..."}
-                    
-                    # 真正的专家分析
-                    expert_output = await self._consult_expert(decision, context)
-                    context = self._incorporate_expert(context, decision, expert_output)
-                    # 把专家输出加入消息历史
-                    self._message_history.append({
-                        "role": "assistant",
-                        "content": f"[Expert: {decision.expert_id}] {expert_output[:1500]}",
-                    })
-                    yield {
-                        "type": "expert_thinking",
-                        "expert_id": decision.expert_id,
-                        "content": expert_output,
-                    }
-
-                elif decision.type == ActionType.ROUNDTABLE:
-                    # 圆桌模式：并行调度多个专家 → 收集输出 → Coordinator 综合
-                    expert_ids = decision.expert_ids or []
-                    if not expert_ids:
-                        expert_ids = ["market_researcher", "economist"]
-
-                    yield {"type": "status", "content": f"Assembling roundtable: {len(expert_ids)} experts..."}
-
-                    # 并行调度所有选中的专家
-                    async for event in self._run_roundtable(expert_ids, decision.content, context):
-                        if event.get("type") == "expert_thinking":
-                            # 将专家输出合并到上下文
-                            eid = event.get("expert_id", "")
-                            content_text = event.get("content", "")
-                            self.state.expert_outputs[eid] = content_text
-                            context.setdefault("expert_outputs", {})[eid] = content_text
-                            self._message_history.append({
-                                "role": "assistant",
-                                "content": f"[Expert: {eid}] {content_text[:1500]}",
-                            })
-                        yield event
-
-                elif decision.type == ActionType.THINK:
-                    # 内部推理，不输出给用户，但加入历史让 Coordinator 记住
-                    context = self._incorporate_thinking(context, decision)
-                    self._message_history.append({
-                        "role": "assistant",
-                        "content": f"[Internal reasoning] {decision.content[:500]}",
-                    })
-
-                # 记录行动
-                self.state.actions_history.append(decision)
-                self._error_count = 0  # 重置错误计数
-
-                # Token 预算检查
-                if self.state.total_tokens_used >= self.state.token_budget * 0.9:
-                    yield {"type": "warning", "content": "接近 Token 预算上限，正在收敛思考"}
-                    self._running = False
-
-            except Exception as e:
-                self._error_count += 1
-                logger.error(f"Agent loop error (#{self._error_count}): {e}")
-
-                if self._error_count >= self._max_consecutive_errors:
-                    yield {
-                        "type": "error",
-                        "content": f"遇到连续错误，暂停处理。错误信息：{str(e)[:200]}"
-                    }
-                    break
-
-                # 尝试恢复（学 Claude Code 的 3 级恢复）
-                context = await self._try_recover(context, e)
-
-        # 🔥 Fallback: 如果循环用完了但有搜索数据，强制输出
-        tool_results = context.get("tool_results", [])
-        has_output = any(
-            a.type == ActionType.OUTPUT for a in self.state.actions_history
-        ) or any(
-            a.type == ActionType.ROUNDTABLE for a in self.state.actions_history
-        )
-        
-        if not has_output and len(tool_results) >= 1:
-            # 🔥 搜索结果质量门控：过滤掉错误和无效的结果
-            useful_results = [
-                r for r in tool_results
-                if isinstance(r.get("result"), dict)
-                and not r["result"].get("error")
-                and len(json.dumps(r["result"], default=str)) > 200
-            ]
+        async for event in orchestrator.run(user_message, language=language):
+            # 记录 assistant 消息到历史
+            if event.get("type") == "message":
+                self._message_history.append({"role": "assistant", "content": event["content"]})
+                # 保存策略到记忆
+                if len(event["content"]) > 200:
+                    await self._save_output_to_memory(event["content"])
+            elif event.get("type") == "expert_thinking":
+                eid = event.get("expert_id", "")
+                content = event.get("content", "")
+                if eid and content:
+                    self.state.expert_outputs[eid] = content
+                    self._message_history.append({"role": "assistant", "content": f"[Expert: {eid}] {content[:1500]}"})
             
-            if len(useful_results) >= 2:
-                # 有效数据足够 → 正常圆桌
-                logger.info(f"Fallback: {len(useful_results)} useful results → launching roundtable")
-                yield {"type": "status", "content": "Finalizing analysis with expert roundtable..."}
-                
-                from app.agent.engine.context_engine import select_roundtable_experts
-                product_type = context.get("product", {}).get("type", "default")
-                expert_ids = select_roundtable_experts(product_type, context.get("user_message", ""))
-                user_msg = context.get("user_message", "")
-                task = (
-                    f"Analyze this product and create a growth strategy. "
-                    f"Product: {user_msg}. "
-                    f"We have collected {len(useful_results)} research data points. "
-                    f"Synthesize the research into actionable Playbooks."
-                )
-                
-                try:
-                    async for evt in self._run_roundtable(expert_ids, task, context):
-                        if evt.get("type") == "expert_thinking":
-                            eid = evt.get("expert_id", "")
-                            self.state.expert_outputs[eid] = evt.get("content", "")
-                        yield evt
-                except Exception as e:
-                    logger.error(f"Fallback roundtable failed: {e}")
-                    yield {
-                        "type": "message",
-                        "content": "I ran into an issue assembling the expert analysis. Could you try again?",
-                    }
-            else:
-                # 搜索结果质量太差 → 不浪费 token 开圆桌，直接用知识库给基础建议
-                logger.info(f"Fallback: only {len(useful_results)} useful results → knowledge-based output")
-                product_data = context.get("product", {})
-                product_desc = product_data.get("raw_description", context.get("user_message", ""))
-                
-                lang = getattr(self, '_language', 'en')
-                if lang == "zh":
-                    yield {
-                        "type": "message",
-                        "content": (
-                            f"我搜索了一些市场数据，但结果不够充分来做完整分析。"
-                            f"基于你的产品描述，我建议先从以下方向入手：\n\n"
-                            f"1. **找到你的用户在哪**：搜索 Reddit/小红书上讨论类似问题的帖子\n"
-                            f"2. **看看竞品怎么做的**：找 3 个直接竞品，分析他们的流量来源\n"
-                            f"3. **写第一篇内容**：在用户最活跃的社区发一篇真实的分享\n\n"
-                            f"能告诉我你的产品具体解决什么问题吗？我可以做更精准的研究。"
-                        ),
-                    }
-                else:
-                    yield {
-                        "type": "message",
-                        "content": (
-                            f"I searched for market data but didn't find enough for a full analysis. "
-                            f"Based on what I know, here's where to start:\n\n"
-                            f"1. **Find where your users are** — search Reddit, X, or Hacker News for discussions about the problem you solve\n"
-                            f"2. **Study 3 competitors** — look at their traffic sources, pricing, and what users say about them\n"
-                            f"3. **Write your first post** — share something genuine in the community where your users hang out\n\n"
-                            f"Can you tell me more about what specific problem your product solves? I'll do a more targeted search."
-                        ),
-                    }
+            yield event
 
         # 持久化状态
         await self._persist_state()
+
 
     async def _think(self, context: dict) -> AgentAction:
         """
