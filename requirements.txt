@@ -14,4 +14,4 @@ python-dotenv==1.0.0
 apscheduler==3.10.4
 beautifulsoup4==4.12.3
 authlib==1.3.0
-# patchright>=1.58.0  # 可选：本地开发安装，Render 免费版跳过（512MB 内存不够跑 Chromium）
+patchright>=1.58.0

@@ -37,6 +37,7 @@ from app.channels.feishu_bot import router as feishu_router
 from app.channels.openclaw_skill import router as openclaw_router
 from app.channels.discord_bot import router as discord_router
 from app.channels.telegram_bot import router as telegram_router
+import os
 from app.services.scheduler import MonitoringScheduler
 from app.agent.daemon import GrowthDaemon
 from app.agent.notifications import NotificationHub
@@ -99,14 +100,9 @@ async def lifespan(app: FastAPI):
         logging.info("📱 Telegram poller skipped (no TELEGRAM_BOT_TOKEN)")
     app.state.telegram_poller = tg_poller
 
-    # Playwright 浏览器预热 — 在 Render 免费版(512MB)上跳过，按需加载
-    import os
-    if os.environ.get("RENDER") is None:
-        # 本地开发环境才预热浏览器
-        import asyncio
-        asyncio.create_task(_warmup_browser())
-    else:
-        logging.info("🌐 Skipping browser warmup on Render (memory-constrained)")
+    # Playwright 浏览器预热 — Railway 有足够内存运行 Chromium
+    import asyncio
+    asyncio.create_task(_warmup_browser())
 
     logging.info("🦀 CrabRes Agent Engine started!")
     yield
