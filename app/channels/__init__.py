@@ -53,18 +53,21 @@ class ChannelGateway:
             trust = TrustManager(memory)
             await trust.record_session()
 
-            # Use PipelineRunner (deterministic, research-first)
-            from app.agent.engine.pipeline import PipelineRunner
-            runner = PipelineRunner(
+            # v5.0: Use AgentLoop (统一入口，内部委托 GraphBuilder)
+            from app.agent.engine.loop import AgentLoop
+            runner = AgentLoop(
                 session_id=self._session_id,
-                llm=llm,
-                tools=tools,
-                experts=experts,
+                llm_service=llm,
+                tool_registry=tools,
+                expert_pool=experts,
                 memory=memory,
-                language=self.language,
             )
 
-            result = await runner.run(message)
+            # AgentLoop.run() 是异步生成器，消费它获取最终结果
+            result = None
+            async for event in runner.run(message, language=self.language):
+                if event.get("type") == "message":
+                    result = event.get("content", "")
 
             elapsed = round(time.time() - start_time, 1)
             logger.info(

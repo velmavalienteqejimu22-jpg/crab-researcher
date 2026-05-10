@@ -1,4 +1,17 @@
 """
+CrabRes Orchestrator — [已归档] v5.0 被 GraphBuilder 替代
+
+!!! 此文件已归档，不再被任何代码主动导入 !!!
+所有功能已迁移至:
+  - app.agent.engine.graph_builder.py (统一图编排器)
+  - app.agent.engine.nodes/ (共享节点)
+  - app.agent.engine.router.py (路由层)
+
+保留此文件仅作参考。如需恢复旧行为，可查看 git 历史。
+=== ARCHIVED IN v5.0 REFACTORING — 2026-05-08 ===
+
+=== 原始文档（归档参考）===
+
 CrabRes Orchestrator — 确定性阶段编排器
 
 解决的核心问题：

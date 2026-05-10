@@ -1,4 +1,35 @@
 """
+CrabRes Pipeline Runner — [已归档] v5.0 被 GraphBuilder 替代
+
+!!! 此文件已归档，不再被任何代码主动导入 !!!
+所有功能已迁移至:
+  - app.agent.engine.graph_builder.py (统一图编排器)
+  - app.agent.engine.nodes/ (共享节点)
+  - app.agent.engine.router.py (路由层)
+
+保留此文件仅作参考。如需恢复旧行为，可查看 git 历史。
+=== ARCHIVED IN v5.0 REFACTORING — 2026-05-08 ===
+"""
+
+import warnings
+
+
+class _DeprecatedPipelineRunner:
+    """已归档：v5.0 使用 GraphBuilder 替代"""
+    def __init__(self, *args, **kwargs):
+        warnings.warn(
+            "PipelineRunner is deprecated in v5.0. Use AgentLoop (delegates to GraphBuilder) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+
+# 保留原名以避免导入崩溃，但实例化即触发 DeprecationWarning
+PipelineRunner = _DeprecatedPipelineRunner
+
+"""
+=== 原始文档（归档参考）===
+
 CrabRes Pipeline Runner — 代码流水线 + LLM 自由发挥 + 防护栏审核
 
 设计原则（来自调研）：

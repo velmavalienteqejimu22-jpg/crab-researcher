@@ -13,22 +13,27 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
+_is_sqlite = settings.DATABASE_URL.startswith("sqlite")
+
 # SSL 配置（Neon / Supabase 等云数据库需要）
 _connect_args = {}
-if "neon.tech" in settings.DATABASE_URL or "supabase" in settings.DATABASE_URL:
-    ssl_ctx = ssl.create_default_context()
-    ssl_ctx.check_hostname = False
-    ssl_ctx.verify_mode = ssl.CERT_REQUIRED
-    _connect_args["ssl"] = ssl_ctx
+if not _is_sqlite:
+    if "neon.tech" in settings.DATABASE_URL or "supabase" in settings.DATABASE_URL:
+        ssl_ctx = ssl.create_default_context()
+        ssl_ctx.check_hostname = False
+        ssl_ctx.verify_mode = ssl.CERT_REQUIRED
+        _connect_args["ssl"] = ssl_ctx
 
-# 异步引擎
-engine = create_async_engine(
-    settings.DATABASE_URL,
-    echo=settings.DEBUG,
-    pool_size=5,
-    max_overflow=5,
-    connect_args=_connect_args,
-)
+# 异步引擎 — SQLite 不支持 pool_size/max_overflow
+_engine_kwargs: dict = {"echo": settings.DEBUG}
+if _is_sqlite:
+    _engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    _engine_kwargs["pool_size"] = 5
+    _engine_kwargs["max_overflow"] = 5
+    _engine_kwargs["connect_args"] = _connect_args
+
+engine = create_async_engine(settings.DATABASE_URL, **_engine_kwargs)
 
 # Session 工厂
 AsyncSessionLocal = async_sessionmaker(

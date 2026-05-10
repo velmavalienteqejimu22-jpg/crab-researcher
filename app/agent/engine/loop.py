@@ -1,14 +1,19 @@
 """
-CrabRes Agent Loop — ReAct 核心循环
+CrabRes Agent Loop — 统一入口（向后兼容层）
 
-学习自 Claude Code 源码泄露的设计：
-- while(true) 状态机，永不崩溃
-- think → act → observe 循环
-- 流式工具执行（工具收到就执行，不等完整响应）
-- 并发安全工具可并行运行
-- 写前日志（进程被杀也能恢复）
-- Token 预算管理（动态分配给不同专家）
-- 3 级恢复路径（压缩→折叠→升级）
+v5.0 重构：
+- 内部委托给 GraphBuilder（统一图编排器）
+- 保留所有公共接口不变（AgentLoop.run() 签名兼容）
+- 原有 ReAct 方法保留为 fallback
+- 新代码位于 graph_builder.py / nodes / router / state / errors
+
+架构：
+  AgentLoop.run() → GraphBuilder.run()
+                      ├── Router 决定模式
+                      ├── Quick 路径（打招呼/闲聊）
+                      ├── Pipeline 路径（默认，确定性阶段）
+                      └── ReAct 路径（高信任用户，LLM 自主决策）
+                      └── 共享节点池（node_understand/research/expert/deliver）
 """
 
 import asyncio
@@ -22,44 +27,46 @@ from enum import Enum
 logger = logging.getLogger(__name__)
 
 
+# ===== 类型定义（保留供外部引用兼容）=====
+
 class LoopPhase(str, Enum):
-    """Agent 所处阶段"""
-    INTAKE = "intake"                # 信息收集：了解用户产品
-    VALIDATION = "validation"        # 验证：产品方向是否可行
-    RESEARCH = "research"            # 研究：竞品/用户/渠道
-    ANALYSIS = "analysis"            # 分析：汇总研究结果
-    CONFIRM = "confirm"              # 确认：与用户确认方向
-    STRATEGY = "strategy"            # 策略：制定增长计划
-    EXECUTION = "execution"          # 执行：生成物料
-    REVIEW = "review"                # 复盘：追踪效果并迭代
+    """Agent 所处阶段（保留兼容）"""
+    INTAKE = "intake"
+    VALIDATION = "validation"
+    RESEARCH = "research"
+    ANALYSIS = "analysis"
+    CONFIRM = "confirm"
+    STRATEGY = "strategy"
+    EXECUTION = "execution"
+    REVIEW = "review"
 
 
 class ActionType(str, Enum):
-    THINK = "think"          # 内部推理
-    TOOL_CALL = "tool_call"  # 调用工具
-    EXPERT = "expert"        # 调度单个专家
-    ROUNDTABLE = "roundtable"  # 圆桌：并行调度多个专家 + Coordinator 综合
-    ASK_USER = "ask_user"    # 向用户提问
-    OUTPUT = "output"        # 输出给用户
-    WAIT = "wait"            # 等待用户输入/外部事件
+    THINK = "think"
+    TOOL_CALL = "tool_call"
+    EXPERT = "expert"
+    ROUNDTABLE = "roundtable"
+    ASK_USER = "ask_user"
+    OUTPUT = "output"
+    WAIT = "wait"
 
 
 @dataclass
 class AgentAction:
-    """Agent 的一次行动"""
+    """Agent 的一次行动（保留兼容）"""
     type: ActionType
     content: str
     tool_name: Optional[str] = None
     tool_args: Optional[dict] = None
     expert_id: Optional[str] = None
-    expert_ids: list[str] = field(default_factory=list)  # 圆桌模式：多个专家 ID
+    expert_ids: list[str] = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
-    parallel_tools: list = field(default_factory=list)  # 并发执行的额外工具
+    parallel_tools: list = field(default_factory=list)
 
 
 @dataclass 
 class LoopState:
-    """Agent Loop 的运行状态"""
+    """Agent Loop 的运行状态（保留兼容，推荐使用 state.AgentState）"""
     session_id: str
     phase: LoopPhase = LoopPhase.INTAKE
     turn_count: int = 0
@@ -75,7 +82,10 @@ class LoopState:
 
 class AgentLoop:
     """
-    CrabRes 核心 Agent 循环
+    CrabRes 核心 Agent 循环 — v5.0 统一入口
+    
+    向后兼容：所有现有调用方无需修改。
+    内部委托给 GraphBuilder 执行。
     """
 
     def __init__(self, session_id: str, llm_service, tool_registry, expert_pool, memory):
@@ -90,36 +100,58 @@ class AgentLoop:
         self._max_loop_iterations = 10
         self._message_history: list[dict] = []
 
-        # Agent workspace 沙箱 — Agent 的"工作区"
+        # Workspace
         from pathlib import Path
         workspace_base = Path(str(memory.base_dir)).parent / "workspace"
         for subdir in ["drafts", "assets", "outreach", "reports", "experiments"]:
             (workspace_base / subdir).mkdir(parents=True, exist_ok=True)
         self.workspace = workspace_base
 
-        # Trust Levels — 渐进自主权
+        # Trust Levels
         from app.agent.trust import TrustManager
         self.trust = TrustManager(memory)
 
-        # Mood Sensing — 情绪感知
+        # Mood Sensing
         from app.agent.engine.mood_sensing import MoodSensor
         self.mood_sensor = MoodSensor()
 
-        # Deep Strategy — ULTRAPLAN 异步深度策略
+        # Deep Strategy
         from app.agent.engine.deep_strategy import get_deep_strategy_engine
         self.deep_strategy = get_deep_strategy_engine()
 
-        # Prompt Cache — 上下文复用缓存
+        # Prompt Cache
         from app.agent.engine.prompt_cache import PromptCache
         self.prompt_cache = PromptCache()
 
+        # LLM Compaction Cache（避免每轮都重新摘要）
+        self._compaction_cache: str = ""          # 已压缩的旧对话摘要
+        self._compaction_msg_count: int = 0       # 摘要覆盖的消息数
+        
+        # ===== v5.0: GraphBuilder（延迟初始化，避免循环导入）=====
+        self._builder = None
+    
+    @property
+    def builder(self) -> 'GraphBuilder':
+        """延迟初始化 GraphBuilder（解决循环依赖）"""
+        if self._builder is None:
+            from app.agent.engine.graph_builder import GraphBuilder
+            self._builder = GraphBuilder(
+                session_id=self.state.session_id,
+                llm_service=self.llm,
+                tool_registry=self.tools,
+                expert_pool=self.experts,
+                memory=self.memory,
+            )
+            # 同步 trust level 到 builder state
+            self._builder.state._trust_level = getattr(self.trust, '_level_name', 'Cautious')
+        return self._builder
+
     async def run(self, user_message: str, language: str = "en"):
         """
-        处理一条用户消息，yield 流式输出
+        处理一条用户消息，yield 流式输出。
         
-        v4.0: 委托给 Orchestrator（确定性阶段编排器）
-        Orchestrator 控制 UNDERSTAND → RESEARCH → EXPERT → SYNTHESIZE → DELIVER 五个阶段
-        每个阶段有明确的入口/退出条件和调用次数上限
+        v5.0: 委托给 GraphBuilder 统一执行。
+        保留所有事件处理逻辑（消息历史记录、状态持久化等）以确保兼容性。
         
         Args:
             user_message: 用户消息
@@ -134,6 +166,103 @@ class AgentLoop:
         # 如果是新启动的会话，尝试从磁盘加载历史
         if not self._message_history:
             await self._load_state()
+
+        # 写前日志
+        await self._write_ahead_log(user_message)
+
+        # 自动提取和存储产品信息
+        await self._maybe_save_product_info(user_message)
+
+        # 自动检测社媒链接并追踪
+        await self._maybe_track_posted_url(user_message)
+
+        # 记录用户消息到历史
+        self._message_history.append({"role": "user", "content": user_message})
+
+        # 检测 @expert_id 私聊模式 — 跳过编排器，直接和专家对话
+        import re as _re
+        at_match = _re.match(r'^@(\w+)\s+(.+)', user_message.strip(), _re.DOTALL)
+        if at_match:
+            expert_id = at_match.group(1).lower()
+            expert_task = at_match.group(2).strip()
+            expert = self.experts.get(expert_id)
+            if expert:
+                yield {"type": "status", "content": f"Connecting you directly with {expert.name}..."}
+                yield {"type": "expert_thinking", "expert_id": expert_id, "content": f"{expert.name} is analyzing..."}
+                context = await self._build_context("")
+                try:
+                    expert_output = await expert.analyze(context, expert_task)
+                    self._message_history.append({"role": "assistant", "content": f"[Expert: {expert_id}] {expert_output[:1500]}"})
+                    self.state.expert_outputs[expert_id] = expert_output
+                    yield {"type": "expert_thinking", "expert_id": expert_id, "content": expert_output}
+                    yield {"type": "message", "content": f"**{expert.name}** (@{expert_id}):\n\n{expert_output}"}
+                except Exception as e:
+                    yield {"type": "error", "content": f"Expert {expert_id} encountered an error: {str(e)[:200]}"}
+                await self._persist_state()
+                return
+
+        # 🧠 Deep Strategy 触发检测（ULTRAPLAN）
+        from app.agent.engine.deep_strategy import should_trigger_deep_strategy
+        if should_trigger_deep_strategy(user_message):
+            yield {"type": "status", "content": "Initiating Deep Strategy session (background)..."}
+            try:
+                job = await self.deep_strategy.create_job(
+                    user_id=str(self.memory.base_dir).split("/")[-1],
+                    session_id=self.state.session_id,
+                    request=user_message,
+                    llm_service=self.llm,
+                    tool_registry=self.tools,
+                    expert_pool=self.experts,
+                    memory=self.memory,
+                )
+                yield {
+                    "type": "message",
+                    "content": (
+                        f"\U0001f52c **Deep Strategy Session launched** (ID: `{job.id}`)\n\n"
+                        f"This is a complex request that requires thorough research. "
+                        f"I'm running a full expert roundtable in the background with 8 specialists.\n\n"
+                        f"**What's happening:**\n"
+                        f"1. Deep market research (5-8 search queries)\n"
+                        f"2. Full expert roundtable (8 experts analyzing in parallel)\n"
+                        f"3. CGO synthesizing final comprehensive strategy\n\n"
+                        f"This will take 2-5 minutes. I'll notify you when it's ready.\n\n"
+                        f"In the meantime, feel free to ask me anything else!"
+                    ),
+                }
+                self._message_history.append({"role": "assistant", "content": f"[Deep Strategy launched: {job.id}]"})
+                await self._persist_state()
+                return
+            except Exception as e:
+                logger.error(f"Deep Strategy failed to launch: {e}")
+                yield {"type": "status", "content": "Deep strategy unavailable, proceeding normally..."}
+
+        # ===== v5.0: 委托给 GraphBuilder =====#
+        builder = self.builder
+        
+        # 执行并转发事件，同时保持消息历史同步
+        async for event in builder.run(user_message, language=language):
+            yield event
+            
+            # 同步关键状态回写到 legacy state（确保旧代码路径仍能访问）
+            if event.get("type") == "message":
+                content = event.get("content", "")
+                self._message_history.append({"role": "assistant", "content": content})
+                if len(content) > 200:
+                    await self._save_output_to_memory(content)
+            elif event.get("type") == "expert_thinking":
+                eid = event.get("expert_id", "")
+                content = event.get("content", "")
+                if eid and content:
+                    self.state.expert_outputs[eid] = content
+                    self._message_history.append({"role": "assistant", "content": f"[Expert: {eid}] {content[:1500]}"})
+            
+            # 同步 token 使用量
+            if hasattr(builder, 'state') and builder.state.total_tokens_used > 0:
+                self.state.total_tokens_used = builder.state.total_tokens_used
+
+        # 持久化状态
+        await self._persist_state()
+        await self._load_state()
 
         # 写前日志
         await self._write_ahead_log(user_message)
@@ -816,28 +945,50 @@ The user came here because they're tired of generic advice. Show them what real 
             else:
                 filtered_history.append(msg)
         
+        # ===== LLM Compaction：旧对话用 LLM 摘要替代硬截断 =====
         # 保留最近 12 条完整消息（约 6 轮对话）
-        # 更早的消息只保留 user 和 assistant 的核心消息（跳过工具/专家）
-        if len(filtered_history) > 12:
-            old_msgs = filtered_history[:-12]
-            recent_msgs = filtered_history[-12:]
-            
-            # 旧消息只保留 user 和最终 assistant 回复
-            compressed_old = []
-            for m in old_msgs:
-                r = m.get("role", "")
-                c = m.get("content", "")
-                if r == "user":
-                    compressed_old.append({"role": "user", "content": c[:300]})
-                elif r == "assistant" and not c.startswith("["):
-                    compressed_old.append({"role": "assistant", "content": c[:500]})
-            
-            # 如果压缩后的旧消息太多，进一步截取
-            compressed_old = compressed_old[-6:]
-            
-            messages.extend(compressed_old)
+        # 更早的消息交给 LLM 压缩成结构化摘要，保留关键信息不丢失
+        RECENT_COUNT = 12
+        if len(filtered_history) > RECENT_COUNT:
+            old_msgs = filtered_history[:-RECENT_COUNT]
+            recent_msgs = filtered_history[-RECENT_COUNT:]
+
+            # 检查缓存：如果旧消息数量没变，复用上次的摘要
+            if len(old_msgs) == self._compaction_msg_count and self._compaction_cache:
+                summary_text = self._compaction_cache
+                logger.info(f"Compaction: using cached summary ({len(summary_text)} chars)")
+            else:
+                # 需要重新摘要
+                summary_text = await self._llm_compact_history(old_msgs)
+                self._compaction_cache = summary_text
+                self._compaction_msg_count = len(old_msgs)
+
+            if summary_text:
+                # 把摘要作为一对 system reminder 注入
+                messages.append({
+                    "role": "user",
+                    "content": f"[COMPACTED CONTEXT — earlier conversation summary]\n{summary_text}",
+                })
+                messages.append({
+                    "role": "assistant",
+                    "content": "I've reviewed the conversation context. Continuing from where we left off.",
+                })
+            else:
+                # LLM 摘要失败 → fallback 到轻量级硬截断（但比原来更合理）
+                for m in old_msgs[-6:]:
+                    r = m.get("role", "")
+                    c = m.get("content", "")
+                    if r == "user":
+                        messages.append({"role": "user", "content": c[:300]})
+                    elif r == "assistant" and not c.startswith("["):
+                        messages.append({"role": "assistant", "content": c[:500]})
+
             messages.extend(recent_msgs)
         else:
+            # 消息不多，不需要压缩，直接全部传入
+            # 同时清除过期缓存
+            self._compaction_cache = ""
+            self._compaction_msg_count = 0
             messages.extend(filtered_history)
 
         # 在最后追加语言指令（使用用户设置的语言，不再猜测）
@@ -1350,10 +1501,142 @@ Create 3 phases, 12-15 steps total.""",
 
         return "\n".join(parts) if parts else ""
 
+    async def _llm_compact_history(self, old_messages: list[dict]) -> str:
+        """
+        用 LLM 将旧对话压缩成结构化摘要。
+        
+        替代原来的硬截断（user→300字 / assistant→500字），
+        用 LLM 提取关键信息：用户意图、产品信息、决策结论、约束条件、待办事项。
+        
+        Args:
+            old_messages: 需要压缩的旧消息列表（已过滤掉 status 类消息）
+            
+        Returns:
+            结构化摘要文本，失败时返回空字符串
+        """
+        from app.agent.engine.llm_adapter import TaskTier
+
+        # 构建供 LLM 摘要的输入：只保留 user/assistant 核心消息
+        # 工具/专家/内部推理类消息已经在外层被截断过了，这里再精炼一次
+        compact_input = []
+        for m in old_messages:
+            role = m.get("role", "")
+            content = m.get("content", "")
+            if not content.strip():
+                continue
+            # 跳过纯内部标记的消息，它们对摘要没有价值
+            if content.startswith("[Internal reasoning]"):
+                continue
+            # 工具结果只保留工具名+前 200 字符
+            if content.startswith("[Tool:"):
+                compact_input.append(f"[{role}] (tool result, {len(content)} chars)")
+                continue
+            # 专家输出只保留专家名+前 300 字符
+            if content.startswith("[Expert:"):
+                expert_name = content.split("]")[0] + "]" if "]" in content else "[Expert]"
+                compact_input.append(f"[{role}] {expert_name} analysis ({len(content)} chars)")
+                continue
+            # 用户/助手正常消息截断到合理长度
+            max_len = 400 if role == "user" else 600
+            compact_input.append(f"[{role}] {content[:max_len]}")
+
+        if not compact_input:
+            return ""
+
+        conversation_text = "\n".join(compact_input)
+
+        compaction_prompt = """You are a conversation compaction engine. Your job is to compress a long conversation history into a DENSE structured summary that preserves ALL critical information.
+
+Output a summary with these EXACT sections (keep each section concise, 2-4 bullets max):
+
+## User's Product/Project
+- What product or project is the user working on?
+- Key details: name, type, target audience, stage
+
+## Key Decisions Made
+- What strategies/approaches were agreed upon?
+- What was rejected and why?
+
+## Constraints & Preferences
+- Budget limits, timeline, platform preferences
+- Things the user explicitly said NO to
+- Tone/style preferences
+
+## Research Findings (if any)
+- Competitor names and key differentiators
+- Channel insights (Reddit/Twitter/Xiaohongshu/etc.)
+- Data points mentioned
+
+## Pending / Open Items
+- Questions not yet answered
+- Actions planned but not executed
+- Follow-ups needed
+
+Rules:
+- Be SPECIFIC: use real names, numbers, URLs when available
+- Be CONCISE: total output under 800 tokens
+- Do NOT hallucinate: if info is missing, omit that section
+- Preserve NEGATIVE constraints (what user rejected) — these are easy to lose
+- Output ONLY the structured summary, no preamble"""
+
+        try:
+            response = await self.llm.generate(
+                system_prompt=compaction_prompt,
+                messages=[{"role": "user", "content": f"Compress this conversation:\n\n{conversation_text}"}],
+                tier=TaskTier.PARSING,       # 摘要任务用便宜模型即可
+                temperature=0.2,             # 低温度保证事实准确性
+                max_tokens=1024,
+            )
+            summary = response.content.strip()
+            logger.info(
+                f"LLM Compaction: {len(old_msgs)} msgs → {len(summary)} chars summary "
+                f"(model={response.model_display}, tokens={response.tokens_used})"
+            )
+            return summary
+
+        except Exception as e:
+            logger.warning(f"LLM Compaction failed, will fallback to hard truncate: {e}")
+            return ""
+
     def _compact_context(self, context: dict) -> dict:
-        """压缩上下文：截断旧的工具结果"""
+        """L1 恢复：用 LLM 压缩上下文中的大字段"""
+        # 先尝试用 LLM 压缩消息历史
+        messages = context.get("messages", [])
+        if len(messages) > 16:
+            old_msgs = messages[:-8]
+            recent_msgs = messages[-8:]
+            summary = await self._llm_compact_history(old_msgs)
+            if summary:
+                context["messages"] = [
+                    {"role": "user", "content": f"[COMPACTED CONTEXT]\n{summary}"},
+                    {"role": "assistant", "content": "Context reviewed. Continuing."},
+                ] + recent_msgs
+                return context
+
+        # fallback：截断旧的工具结果
         if "tool_results" in context and len(context["tool_results"]) > 5:
             context["tool_results"] = context["tool_results"][-5:]
+        return context
+
+    def _collapse_history(self, context: dict) -> dict:
+        """L2 恢复：激进折叠——用 LLM 摘要 + 只保留最近输出"""
+        messages = context.get("messages", [])
+        if len(messages) > 10:
+            # 只保留最近 4 条完整消息，其余全部摘要
+            recent = messages[-4:]
+            older = messages[:-4]
+            summary = await self._llm_compact_history(older)
+            if summary:
+                context["messages"] = [
+                    {"role": "user", "content": f"[COLLAPSED CONTEXT]\n{summary}"},
+                    {"role": "assistant", "content": "Context loaded."},
+                ] + recent
+                return context
+
+        # fallback：只保留最近 3 个专家输出
+        if "expert_outputs" in context:
+            keys = list(context["expert_outputs"].keys())[-3:]
+            context["expert_outputs"] = {k: context["expert_outputs"][k] for k in keys}
         return context
 
     def _collapse_history(self, context: dict) -> dict:

@@ -17,8 +17,7 @@ from pydantic import BaseModel
 
 from app.core.security import get_current_user
 from app.agent.engine.llm_adapter import AgentLLM
-from app.agent.engine.pipeline import PipelineRunner
-from app.agent.engine.loop import AgentLoop, LoopState  # 保留兼容
+from app.agent.engine.loop import AgentLoop, LoopState  # v5.0: 统一入口，内部委托 GraphBuilder
 from app.agent.tools import ToolRegistry
 from app.agent.tools.research import WebSearchTool, ScrapeWebsiteTool, SocialSearchTool, CompetitorAnalyzeTool, DeepScrapeTool
 from app.agent.tools.actions import WritePostTool, WriteEmailTool, SubmitToDirectoryTool, SetActiveCampaignTool, PublishPostTool, SaveCompetitorsTool

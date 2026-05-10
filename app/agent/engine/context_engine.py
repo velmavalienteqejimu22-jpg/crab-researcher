@@ -351,6 +351,90 @@ def select_roundtable_experts(product_type: str, task: str, max_experts: int = 4
     return selected
 
 
+async def select_experts_with_llm_refinement(
+    product_type: str,
+    product_info: dict,
+    task: str,
+    max_experts: int,
+    llm_service,
+) -> list[str]:
+    """
+    专家选择的混合策略：代码查表为快路径，LLM 在轴外场景兜底。
+
+    触发 LLM 介入的条件：
+    - product_type 落到 "default"（查表矩阵未明确分类）
+    - 产品描述足够长（>= 30 字符），LLM 有判断依据
+    - llm_service 可用
+
+    其它情况直接走 select_roundtable_experts() 查表，零 token。
+    """
+    base = select_roundtable_experts(product_type, task, max_experts)
+
+    # 非轴外产品 → 直接用查表结果
+    if product_type and product_type != "default":
+        return base
+    if llm_service is None or not hasattr(llm_service, "generate"):
+        return base
+
+    desc = (
+        product_info.get("raw_description")
+        or product_info.get("description")
+        or ""
+    )[:500]
+    if len(desc) < 30:
+        return base  # 信息太少，LLM 也判断不出来
+
+    available = [
+        "market_researcher", "economist", "social_media", "psychologist",
+        "content_strategist", "copywriter", "paid_ads", "partnerships",
+        "ai_distribution", "product_growth", "data_analyst", "critic", "designer",
+    ]
+
+    try:
+        import json as _json
+        from app.agent.engine.llm_adapter import TaskTier
+
+        prompt = (
+            f"You are picking growth experts for an unusual/niche product.\n"
+            f"Pick the {max_experts} MOST RELEVANT expert IDs from this exact list:\n"
+            f"{', '.join(available)}\n\n"
+            f"Product description:\n{desc}\n\n"
+            f"Return ONLY a JSON array of {max_experts} expert IDs from the list above. "
+            f"No explanation. Example: [\"market_researcher\", \"social_media\", \"psychologist\", \"content_strategist\"]"
+        )
+        resp = await llm_service.generate(
+            system_prompt=prompt,
+            messages=[{"role": "user", "content": "Pick experts."}],
+            tier=TaskTier.PARSING,
+            max_tokens=120,
+        )
+        raw = (getattr(resp, "content", "") or "").strip()
+        # 清理 ```json``` 围栏
+        if "```" in raw:
+            if "```json" in raw:
+                raw = raw.split("```json", 1)[1]
+            else:
+                raw = raw.split("```", 1)[1]
+            raw = raw.split("```", 1)[0].strip()
+        # 抽取 [...] 区段
+        if "[" in raw and "]" in raw:
+            raw = raw[raw.index("["): raw.rindex("]") + 1]
+
+        picks = _json.loads(raw)
+        if isinstance(picks, list):
+            valid = [p for p in picks if isinstance(p, str) and p in available]
+            valid = list(dict.fromkeys(valid))[:max_experts]  # 去重 + 截断
+            if len(valid) >= 2:
+                logger.info(
+                    f"Expert selection refined by LLM: {valid} (was {base}) for off-axis product"
+                )
+                return valid
+    except Exception as e:
+        logger.debug(f"Expert LLM refinement failed, fallback to table: {e}")
+
+    return base
+
+
 def get_expert_execution_order(expert_ids: list[str]) -> list[list[str]]:
     """
     根据依赖图计算专家的执行顺序（分批）

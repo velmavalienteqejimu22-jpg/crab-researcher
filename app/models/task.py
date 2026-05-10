@@ -5,13 +5,22 @@ SQLAlchemy ORM 数据模型
 
 from datetime import datetime
 
-from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, JSON,
 )
 from sqlalchemy.orm import relationship
 
-from app.core.database import Base
+from app.core.database import Base, _is_sqlite
+
+# pgvector 仅在 PostgreSQL 下启用
+if not _is_sqlite:
+    try:
+        from pgvector.sqlalchemy import Vector as _Vector
+        _EmbeddingCol = lambda: Column(_Vector(1536), comment="text-embedding-3-small 1536维向量")
+    except ImportError:
+        _EmbeddingCol = lambda: Column(Text, nullable=True, comment="embedding (pgvector not installed)")
+else:
+    _EmbeddingCol = lambda: Column(Text, nullable=True, comment="embedding (sqlite fallback)")
 
 
 class User(Base):
@@ -101,7 +110,7 @@ class RAGDocument(Base):
     doc_type = Column(String(50), nullable=False, comment="文档类型: report/sop/persona/industry_data")
     title = Column(String(255), nullable=False, comment="文档标题")
     content = Column(Text, nullable=False, comment="文档内容")
-    embedding = Column(Vector(1536), comment="OpenAI text-embedding-3-small 1536维向量")
+    embedding = _EmbeddingCol()
     metadata_ = Column("metadata", JSON, default=dict, comment="元信息")
     created_at = Column(DateTime, default=datetime.utcnow)
 
