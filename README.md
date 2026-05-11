@@ -1,8 +1,20 @@
-# CrabRes
-
-> CrabRes is a growth agent I built for indie developers. It works, but not well enough yet — and that gap taught me more about agent design than anything else.
+# 🦀 CrabRes
 
 > An AI growth strategy agent for indie developers — not just chat, but an agent that actually does the research, shapes the strategy, ships the content, and watches the competition.
+
+[![Live demo](https://img.shields.io/badge/demo-crab--researcher.vercel.app-orange)](https://crab-researcher.vercel.app/)
+[![Version](https://img.shields.io/badge/version-v5.1.0-blue)](./CHANGELOG.md)
+[![License](https://img.shields.io/badge/license-MIT-green)](#license)
+
+CrabRes is a growth agent I built for indie developers. It works, but not well enough yet — and that gap taught me more about agent design than anything else.
+
+<p align="center">
+  <a href="https://crab-researcher.vercel.app/">
+    <img src="docs/demo/demo.gif" alt="CrabRes demo: ask a question, watch 13 experts research and respond" width="800" />
+  </a>
+  <br />
+  <sub><em>Ask once. Watch the agent research, run a 13-expert roundtable, and ship deliverables.</em></sub>
+</p>
 
 ---
 
@@ -77,6 +89,22 @@ CrabRes is an attempt at an **agent that actually touches the real world**:
      /GLM/Kimi
      /Qwen)
 ```
+
+---
+
+## What's new in v5.1
+
+The biggest lesson from v4 → v5: **don't ask an LLM to do something `if/else` can do.**
+
+| Job | v4.x | v5.1 |
+|---|---|---|
+| Decide route (Quick / Pipeline / ReAct) | LLM | Regex first, LLM only on low-confidence short messages |
+| Pick the 4 experts for this product | LLM, every time | Code lookup; LLM only for off-axis products |
+| Generate deliverables | Always 4 artifacts | Intent-aware: "give me a competitor analysis only" → just the report |
+| Cost of a single "hi" | ~$0.02 | **$0.0005** |
+| Cost of a full strategy session | unbounded | **~$0.025** |
+
+Plus: TokenDance gateway (DeepSeek V4 / GLM 4.7 / Kimi K2.6 / Qwen3) as the primary LLM provider with Moonshot/OpenRouter fallback, output safety check on every deliverable, soft-budget alerts at 80% of session cap, and a 3-layer eval system (`app/agent/eval/`). Full details in [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 
@@ -157,9 +185,33 @@ All tiers fall back to Moonshot / OpenRouter when TokenDance is unavailable. Pro
 
 ## Quick Start
 
-Live at: https://crab-researcher.vercel.app/
+**Try it now**: https://crab-researcher.vercel.app/ (heads-up: backend runs on Render's free tier, first request after idle takes 30-60s to wake up — the frontend shows a banner).
 
-Multiple entry points: web frontend, Discord / WhatsApp / Feishu bindings, CLI, and MCP plugin.
+Or run locally:
+
+```bash
+git clone https://github.com/calebguo007/crab-researcher.git
+cd crab-researcher
+
+# Backend
+cp .env.example .env          # fill in TOKENDANCE_API_KEY, TAVILY_API_KEY, DATABASE_URL
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8002
+
+# Frontend (separate terminal)
+cd frontend
+npm install
+npm run dev                    # http://localhost:3000
+```
+
+**Required env vars**:
+- `TOKENDANCE_API_KEY` — primary LLM provider; covers DeepSeek V4 / GLM 4.7 / Kimi K2.6 / Qwen3 8B across all 4 tiers
+- `TAVILY_API_KEY` — search backend
+- `DATABASE_URL` / `DATABASE_URL_SYNC` — Postgres; sqlite works for local dev with code changes
+
+Optional fallback keys (auto-skipped if missing): `MOONSHOT_API_KEY`, `OPENROUTER_API_KEY`, `FIRECRAWL_API_KEY`.
+
+**Other entry points**: Discord / WhatsApp / Feishu bot bindings (`app/channels/`), CLI (`cli/`), MCP plugin (`mcp/`).
 
 ---
 
