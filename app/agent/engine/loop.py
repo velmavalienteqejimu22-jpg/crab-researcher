@@ -1024,7 +1024,7 @@ The user came here because they're tired of generic advice. Show them what real 
         """3 级恢复（学 Claude Code）"""
         if self._error_count == 1:
             logger.info("Recovery L1: compacting context")
-            context = self._compact_context(context)
+            context = await self._compact_context(context)
         elif self._error_count == 2:
             logger.info("Recovery L2: collapsing history")
             context = self._collapse_history(context)
@@ -1598,7 +1598,7 @@ Rules:
             logger.warning(f"LLM Compaction failed, will fallback to hard truncate: {e}")
             return ""
 
-    def _compact_context(self, context: dict) -> dict:
+    async def _compact_context(self, context: dict) -> dict:
         """L1 恢复：用 LLM 压缩上下文中的大字段"""
         # 先尝试用 LLM 压缩消息历史
         messages = context.get("messages", [])
@@ -1619,30 +1619,12 @@ Rules:
         return context
 
     def _collapse_history(self, context: dict) -> dict:
-        """L2 恢复：激进折叠——用 LLM 摘要 + 只保留最近输出"""
-        messages = context.get("messages", [])
-        if len(messages) > 10:
-            # 只保留最近 4 条完整消息，其余全部摘要
-            recent = messages[-4:]
-            older = messages[:-4]
-            summary = await self._llm_compact_history(older)
-            if summary:
-                context["messages"] = [
-                    {"role": "user", "content": f"[COLLAPSED CONTEXT]\n{summary}"},
-                    {"role": "assistant", "content": "Context loaded."},
-                ] + recent
-                return context
+        """L2 恢复：折叠历史——只保留最近的专家输出。
 
-        # fallback：只保留最近 3 个专家输出
+        （删除了一个永远不会被调用的同名 LLM-摘要版本：Python 会用最后一个定义
+        覆盖前面同名函数，那个旧版本里还有 broken await 语法；保留这个简单版即可。）
+        """
         if "expert_outputs" in context:
-            keys = list(context["expert_outputs"].keys())[-3:]
-            context["expert_outputs"] = {k: context["expert_outputs"][k] for k in keys}
-        return context
-
-    def _collapse_history(self, context: dict) -> dict:
-        """折叠历史：只保留最近的专家输出"""
-        if "expert_outputs" in context:
-            # 只保留最近 3 个专家的输出
             keys = list(context["expert_outputs"].keys())[-3:]
             context["expert_outputs"] = {k: context["expert_outputs"][k] for k in keys}
         return context

@@ -17,7 +17,8 @@ from pydantic import BaseModel
 
 from app.core.security import get_current_user
 from app.agent.engine.llm_adapter import AgentLLM
-from app.agent.engine.loop import AgentLoop, LoopState  # v5.0: 统一入口，内部委托 GraphBuilder
+from app.agent.engine.loop import AgentLoop, LoopState  # 保留：GraphBuilder ReAct 路径会复用其 prompt 构造逻辑
+from app.agent.engine.graph_builder import GraphBuilder  # v5.1: 主引擎，Router + 共享节点 + P0/P1 改进
 from app.agent.tools import ToolRegistry
 from app.agent.tools.research import WebSearchTool, ScrapeWebsiteTool, SocialSearchTool, CompetitorAnalyzeTool, DeepScrapeTool
 from app.agent.tools.actions import WritePostTool, WriteEmailTool, SubmitToDirectoryTool, SetActiveCampaignTool, PublishPostTool, SaveCompetitorsTool
@@ -44,7 +45,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agent", tags=["Agent"])
 
 # 全局会话存储（带 TTL 和用户隔离）
-_sessions: dict[str, AgentLoop] = {}  # 现在真正使用 AgentLoop（ReAct 循环）
+_sessions: dict[str, GraphBuilder] = {}  # 主引擎：Router → Quick/Pipeline/ReAct
 _session_owners: dict[str, int] = {}  # session_id -> user_id
 _session_last_active: dict[str, float] = {}  # session_id -> timestamp
 _SESSION_TTL = 1800  # 30 分钟无活动过期
@@ -138,7 +139,7 @@ async def agent_chat(
         experts.set_llm(llm)
         memory = create_memory(user_id=str(user_id))
         tools = _get_or_create_tools(memory=memory)
-        loop = AgentLoop(
+        loop = GraphBuilder(
             session_id=session_id, llm_service=llm,
             tool_registry=tools, expert_pool=experts, memory=memory,
         )
@@ -187,7 +188,7 @@ async def agent_chat_stream(
         experts.set_llm(llm)
         memory = create_memory(user_id=str(user_id))
         tools = _get_or_create_tools(memory=memory)
-        loop = AgentLoop(
+        loop = GraphBuilder(
             session_id=session_id, llm_service=llm,
             tool_registry=tools, expert_pool=experts, memory=memory,
         )
