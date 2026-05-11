@@ -1,5 +1,42 @@
 # Changelog
 
+## v5.1.0 — Smarter Research + Output Safety + Budget Self-Restraint
+
+非破坏性增量，无部署动作（除 `git pull` 重启）。延续 v5.0 的"code as fast path, LLM as fallback"思路，在三个维度补齐之前 P2/P1.3 未完成的项。
+
+### Highlights
+
+**P1.3 + P2.1 — RESEARCH 阶段 LLM 引导扩展**
+- 检测到深度研究关键词（`深入`/`deep dive`/`investigate`/`comprehensive analysis` 等）→ `deep_research_mode=True`
+- 基础模板查询跑完后，可选追加 1 轮 LLM 引导扩展（最多 +2 个新 query）
+- 触发条件：用户显式要求深度研究，**或** 基础查询召回率 < 2 useful
+- 实测：`"deep dive on competitive landscape and pricing"` 触发 LLM 提出
+  `"RankFlow willingness to pay indie developers"` + `"Indie SEO tool regulatory considerations"` —— 模板查询根本想不到的角度
+- 扩展成本：~$0.0001（PARSING tier qwen3-8b）
+- LLM 失败/超时静默跳过，主流程不受影响
+
+**P2.3 — 交付物预发布安全检查**
+- DELIVER 阶段每个产物（report / drafts / plan）生成后立即扫描：
+  - 显式 PII：电话号码格式、邮箱、信用卡号、SSN 模式
+  - 高风险声明：`FDA approved` / `100% effective` / `guaranteed ROI` 等广告法雷区
+- 软警告而非硬阻断：命中项写进 `deliverable.warnings`，最终消息追加 `⚠️ review before sharing` 块
+- 设计前提：用户可能就是要写 `$99/mo` 这种合法内容，硬过滤会丢交付物
+- 纯 regex + 关键词，零 token；间接 PII 留给未来的小 classifier
+
+**P2.2 — 成本软提示**
+- 预算用到 80% 时，向 system_prompt 注入 `[BUDGET ALERT]` 让模型自己节制（"drop preambles, minimal examples, prioritize actionable points"）
+- 与已有的 90% 硬降级（`_maybe_downgrade_tier`）互补：硬降级是代码侧切 tier，软提示是模型侧自约束
+- 实测 LLM 收到约束信号后会显著缩短回复，延长可用 runway
+
+### Commits
+
+```
+3a0af1a feat(nodes): output safety + LLM-guided research expansion
+0c8230d feat(llm): soft budget warning at >= 80% usage
+```
+
+---
+
 ## v5.0.0 — Hybrid Architecture + TokenDance Gateway
 
 **核心变化**：主引擎从 `AgentLoop` 切换到 `GraphBuilder`；LLM 接入 TokenDance 多模型网关。
