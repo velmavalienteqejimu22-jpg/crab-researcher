@@ -154,9 +154,11 @@ TIER_CHAIN: dict[TaskTier, list[str]] = {
         "td-glm-4.7", "td-deepseek-v4-pro",
         "moonshot", "deepseek-v3", "gemini-flash",
     ],
-    # WRITING（文案生成）— 便宜快速
+    # WRITING（文案生成）— 偏好非推理模型，直出最终文案
+    # 注：deepseek-v4-flash 是推理模型，在短 max_tokens 下容易把预算花在 reasoning_content
+    # 上而 content 为空，故降为备选；glm-4.7 实测在 thinking/writing 都能直出可用内容。
     TaskTier.WRITING: [
-        "td-deepseek-v4-flash", "td-glm-4.7",
+        "td-glm-4.7", "td-deepseek-v4-flash",
         "moonshot", "deepseek-v3",
     ],
     # PARSING（路由兜底、专家选择、JSON 抽取）— 最便宜
@@ -301,6 +303,19 @@ class AgentLLM:
                     temperature=temperature,
                     max_tokens=max_tokens or spec.max_tokens,
                 )
+
+                # 推理模型在 max_tokens 不够时可能 content="" 但消耗了 tokens（被 reasoning 吃光）
+                # 没有 tool_calls 也没有 content → 视为失败，让 chain 下一个模型兜底
+                if not result.content and not result.tool_calls:
+                    logger.warning(
+                        f"[LLM] {spec.display_name} returned empty content "
+                        f"(likely reasoning model truncated by max_tokens={max_tokens or spec.max_tokens}), "
+                        f"tokens spent={result.tokens_used}. Falling through to next."
+                    )
+                    # 仍然记账（避免成本黑洞）
+                    self._track_usage(tier, spec, result)
+                    continue
+
                 # 记录成本
                 self._track_usage(tier, spec, result)
                 return result
