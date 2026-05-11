@@ -47,10 +47,13 @@ CrabRes is an attempt at an **agent that actually touches the real world**:
 │  FastAPI + SQLAlchemy + asyncio                     │
 │                                                     │
 │  ┌─────────────────────────────────────────┐        │
-│  │  Agent Engine                           │        │
-│  │  ├─ ReAct Loop (think→act→observe)      │        │
-│  │  ├─ Pipeline Runner (Coordinator)       │        │
-│  │  ├─ Expert Pool (13, weighted)          │        │
+│  │  Agent Engine (GraphBuilder, v5.0)      │        │
+│  │  ├─ Router → Quick / Pipeline / ReAct   │        │
+│  │  ├─ Shared Nodes                        │        │
+│  │  │   understand → research → expert →   │        │
+│  │  │   deliver  (intent-aware artifacts)  │        │
+│  │  ├─ Expert Pool (13, weighted + LLM    │         │
+│  │  │   refinement for off-axis products)  │        │
 │  │  ├─ Tool Registry                       │        │
 │  │  └─ Memory (8 categories + pgvector)    │        │
 │  └─────────────────────────────────────────┘        │
@@ -68,16 +71,19 @@ CrabRes is an attempt at an **agent that actually touches the real world**:
                    │
          ┌─────────┼─────────┬──────────┬──────────┐
          ▼         ▼         ▼          ▼          ▼
-      Moonshot  OpenRouter  Tavily  Firecrawl   Neon
-      (critical) (vision)  (search) (deep scrape) (PG+pgvector)
+    TokenDance  Moonshot   Tavily   Firecrawl    Neon
+    (4-tier:    (fallback) (search) (deep scrape) (PG+pgvector)
+     DeepSeek
+     /GLM/Kimi
+     /Qwen)
 ```
 
 ---
 
 ## Core Features
 
-### 1. A Research-First Agent Loop
-The Coordinator's first rule is simple: **if you can search, don't ask.** When a user sends a terse message like "xx is a competitor", the agent immediately:
+### 1. A Research-First Agent
+GraphBuilder's first rule is simple: **if you can search, don't ask.** When a user sends a terse message like "xx is a competitor", the agent immediately:
 - Fires `web_search("xx competitor analysis")`
 - Scrapes the top result's landing page
 - Extracts product info and writes it to memory
@@ -117,13 +123,13 @@ Eight categorized directories plus pgvector semantic search:
 ### 7. Trust Levels
 Cautious → Building → Trusted → Autopilot. Early on, the agent confirms every action. As trust grows, it can autonomously post, reach out, and hit external systems on the user's behalf.
 
-### 8. Four-Tier LLM Routing
-- **CRITICAL**: strategic decisions — Claude Opus / Moonshot K2
-- **THINKING**: expert reasoning — Moonshot v1-32k
-- **WRITING**: copy generation — DeepSeek / Qwen
-- **PARSING**: structured extraction — GPT-4o-mini / Gemini Flash
+### 8. Four-Tier LLM Routing (via TokenDance gateway)
+- **CRITICAL** (CGO synthesis): DeepSeek V4 Pro → GLM 4.7 → Kimi K2.6
+- **THINKING** (expert analysis): GLM 4.7 → DeepSeek V4 Pro
+- **WRITING** (copy generation): GLM 4.7 → DeepSeek V4 Flash
+- **PARSING** (router fallback / JSON extraction): Qwen3 8B → DeepSeek V4 Flash
 
-Saves money without cutting corners on the decisions that matter.
+All tiers fall back to Moonshot / OpenRouter when TokenDance is unavailable. Providers without API keys are skipped automatically to avoid wasted retries. Saves money without cutting corners on the decisions that matter — a full growth-strategy session runs ~$0.025; a single greeting runs ~$0.0005 via the Quick path.
 
 ---
 
@@ -133,7 +139,7 @@ Saves money without cutting corners on the decisions that matter.
 - FastAPI + Pydantic v2 + SQLAlchemy 2.0 async
 - PostgreSQL (Neon) + pgvector
 - Playwright (browser) + httpx (HTTP)
-- Moonshot / OpenRouter / OpenAI multi-LLM routing
+- TokenDance gateway (DeepSeek V4 / GLM 4.7 / Kimi K2.6 / Qwen3) + Moonshot / OpenRouter fallback
 - Tavily (search) + Firecrawl (deep scrape)
 - Tweepy / hand-rolled OAuth 1.0a
 
@@ -163,7 +169,7 @@ Multiple entry points: web frontend, Discord / WhatsApp / Feishu bindings, CLI, 
 crab-researcher/
 ├── app/
 │   ├── agent/
-│   │   ├── engine/          # ReAct loop / pipeline / LLM adapter
+│   │   ├── engine/          # GraphBuilder + Router + shared nodes / LLM adapter
 │   │   ├── experts/         # 13 expert implementations
 │   │   ├── tools/           # research / action / browser / twitter tools
 │   │   ├── daemon/          # Growth Daemon
