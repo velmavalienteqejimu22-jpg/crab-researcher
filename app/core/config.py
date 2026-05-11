@@ -25,7 +25,12 @@ class Settings(BaseSettings):
     DATABASE_URL_SYNC: str = "postgresql://postgres:password@localhost:5432/crab_researcher"
     REDIS_URL: str = "redis://localhost:6379"
 
-    # ========== OpenRouter (主力 LLM) ==========
+    # ========== TokenDance 网关 (OpenAI 兼容，多模型聚合) ==========
+    # 配置后会成为 4 个 Tier 的首选提供商；未配置时自动回退到 OpenRouter / Moonshot
+    TOKENDANCE_API_KEY: Optional[str] = None
+    TOKENDANCE_BASE_URL: str = "https://tokendance.space/gateway/v1"
+
+    # ========== OpenRouter (备用 LLM) ==========
     OPENROUTER_API_KEY: Optional[str] = None
 
     # ========== 备用 LLM API Keys ==========

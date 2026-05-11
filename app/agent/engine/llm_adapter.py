@@ -62,17 +62,61 @@ class ModelSpec:
 
 
 # ===== 模型注册表 =====
+# 价格单位统一为 USD/M tokens（即 $/M）。
+# TokenDance 网关原价为 ¥/M tokens，按 ≈ 7 CNY/USD 换算（保守估计，便于预算硬上限触发）。
 MODELS: dict[str, ModelSpec] = {
-    # 主力: Moonshot（直连，不经 OpenRouter）
+    # ===== TokenDance 网关（OpenAI 兼容多模型聚合，主力候选）=====
+    "td-deepseek-v4-pro": ModelSpec(
+        id="deepseek-v4-pro",
+        display_name="DeepSeek V4 Pro (TD)",
+        input_cost_per_m=0.41,   # ¥2.88 → ≈ $0.41
+        output_cost_per_m=0.82,  # ¥5.76 → ≈ $0.82
+        max_tokens=8192,
+        provider="tokendance",
+    ),
+    "td-deepseek-v4-flash": ModelSpec(
+        id="deepseek-v4-flash",
+        display_name="DeepSeek V4 Flash (TD)",
+        input_cost_per_m=0.11,   # ¥0.8 → ≈ $0.11
+        output_cost_per_m=0.23,  # ¥1.6 → ≈ $0.23
+        max_tokens=4096,
+        provider="tokendance",
+    ),
+    "td-glm-4.7": ModelSpec(
+        id="glm-4.7",
+        display_name="Z.ai GLM 4.7 (TD)",
+        input_cost_per_m=0.27,   # ¥1.9
+        output_cost_per_m=1.12,  # ¥7.84
+        max_tokens=8192,
+        provider="tokendance",
+    ),
+    "td-kimi-k2.6": ModelSpec(
+        id="kimi-k2.6",
+        display_name="MoonshotAI Kimi K2.6 (TD)",
+        input_cost_per_m=0.70,   # ¥4.875
+        output_cost_per_m=2.89,  # ¥20.25
+        max_tokens=8192,
+        provider="tokendance",
+    ),
+    "td-qwen3-8b": ModelSpec(
+        id="qwen3-8b",
+        display_name="Qwen3 8B (TD)",
+        input_cost_per_m=0.07,   # ¥0.5
+        output_cost_per_m=0.29,  # ¥2
+        max_tokens=4096,
+        provider="tokendance",
+    ),
+
+    # ===== Moonshot 直连（备选）=====
     "moonshot": ModelSpec(
         id="moonshot-v1-128k",
         display_name="Moonshot V1 128K",
-        input_cost_per_m=0.8,  # 约 ¥0.012/千tokens
+        input_cost_per_m=0.8,
         output_cost_per_m=0.8,
         max_tokens=4096,
         provider="moonshot",
     ),
-    # 备选: Claude via OpenRouter
+    # ===== OpenRouter 备选 =====
     "claude-sonnet-4": ModelSpec(
         id="anthropic/claude-sonnet-4",
         display_name="Claude Sonnet 4",
@@ -80,7 +124,6 @@ MODELS: dict[str, ModelSpec] = {
         output_cost_per_m=15.0,
         max_tokens=8192,
     ),
-    # 备选: DeepSeek via OpenRouter
     "deepseek-v3": ModelSpec(
         id="deepseek/deepseek-chat-v3-0324",
         display_name="DeepSeek V3",
@@ -88,7 +131,6 @@ MODELS: dict[str, ModelSpec] = {
         output_cost_per_m=1.10,
         max_tokens=4096,
     ),
-    # 备选: Gemini via OpenRouter
     "gemini-flash": ModelSpec(
         id="google/gemini-2.5-flash",
         display_name="Gemini 2.5 Flash",
@@ -99,12 +141,29 @@ MODELS: dict[str, ModelSpec] = {
 }
 
 # ===== Tier → 模型降级链 =====
-# Moonshot 在所有 Tier 中都是第一选择，OpenRouter 模型作为降级备选
+# 优先级：TokenDance（如已配置 key）→ Moonshot 直连 → OpenRouter
+# 任一上游失败/超时/返回错误 → 自动降到下一个，最终回退到 Moonshot 保底
 TIER_CHAIN: dict[TaskTier, list[str]] = {
-    TaskTier.CRITICAL: ["moonshot", "claude-sonnet-4", "deepseek-v3"],
-    TaskTier.THINKING: ["moonshot", "deepseek-v3", "gemini-flash"],
-    TaskTier.WRITING:  ["moonshot", "deepseek-v3"],
-    TaskTier.PARSING:  ["moonshot", "gemini-flash", "deepseek-v3"],
+    # CRITICAL（CGO 综合、关键决策）— 用强模型
+    TaskTier.CRITICAL: [
+        "td-deepseek-v4-pro", "td-glm-4.7", "td-kimi-k2.6",
+        "moonshot", "claude-sonnet-4", "deepseek-v3",
+    ],
+    # THINKING（专家深度分析）— 性价比优先
+    TaskTier.THINKING: [
+        "td-glm-4.7", "td-deepseek-v4-pro",
+        "moonshot", "deepseek-v3", "gemini-flash",
+    ],
+    # WRITING（文案生成）— 便宜快速
+    TaskTier.WRITING: [
+        "td-deepseek-v4-flash", "td-glm-4.7",
+        "moonshot", "deepseek-v3",
+    ],
+    # PARSING（路由兜底、专家选择、JSON 抽取）— 最便宜
+    TaskTier.PARSING: [
+        "td-qwen3-8b", "td-deepseek-v4-flash",
+        "moonshot", "gemini-flash", "deepseek-v3",
+    ],
 }
 
 
@@ -152,6 +211,7 @@ class AgentLLM:
         """
         self._openrouter_client: Optional[AsyncOpenAI] = None
         self._moonshot_client: Optional[AsyncOpenAI] = None
+        self._tokendance_client: Optional[AsyncOpenAI] = None
         self.usage = UsageTracker()
         self.budget_limit = budget_limit_usd
 
@@ -177,10 +237,30 @@ class AgentLLM:
             )
         return self._moonshot_client
 
+    @property
+    def tokendance(self) -> AsyncOpenAI:
+        if self._tokendance_client is None:
+            self._tokendance_client = AsyncOpenAI(
+                api_key=settings.TOKENDANCE_API_KEY,
+                base_url=settings.TOKENDANCE_BASE_URL,
+            )
+        return self._tokendance_client
+
     def _get_client(self, spec: ModelSpec) -> AsyncOpenAI:
+        if spec.provider == "tokendance":
+            return self.tokendance
         if spec.provider == "moonshot":
             return self.moonshot
         return self.openrouter
+
+    def _is_spec_available(self, spec: ModelSpec) -> bool:
+        """检查模型对应的 provider 是否有可用 API key"""
+        if spec.provider == "tokendance":
+            return bool(settings.TOKENDANCE_API_KEY)
+        if spec.provider == "moonshot":
+            return bool(settings.MOONSHOT_API_KEY)
+        # openrouter (default)
+        return bool(settings.OPENROUTER_API_KEY)
 
     async def generate(
         self,
@@ -208,6 +288,10 @@ class AgentLLM:
 
         for model_key in chain:
             spec = MODELS[model_key]
+            # 跳过没有配置 API key 的 provider，避免无谓的 401 重试
+            if not self._is_spec_available(spec):
+                logger.debug(f"[LLM] Skipping {spec.display_name}: no API key for provider={spec.provider}")
+                continue
             try:
                 result = await self._call(
                     spec=spec,
