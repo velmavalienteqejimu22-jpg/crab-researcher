@@ -345,6 +345,30 @@ class AgentLLM:
             model="error",
         )
 
+    def _maybe_inject_budget_warning(self, system_prompt: str) -> str:
+        """
+        软提示层：在 system_prompt 前注入预算告警。
+
+        与硬降级（_maybe_downgrade_tier）互补：
+        - 硬降级在 90% 时把整个 tier 强制压低（代码侧）
+        - 软提示在 80% 时告诉 LLM "你预算紧张了"（让模型自己节制）
+
+        实测：被告知约束时 LLM 会显著缩短回复 + 跳过废话。
+        """
+        if self.budget_limit <= 0:
+            return system_prompt
+        ratio = self.usage.total_cost_usd / self.budget_limit
+        if ratio < 0.8:
+            return system_prompt
+        remaining = max(0, self.budget_limit - self.usage.total_cost_usd)
+        warning = (
+            f"[BUDGET ALERT] You've used {ratio*100:.0f}% of this session's $ "
+            f"{self.budget_limit:.2f} budget (${remaining:.3f} left). "
+            f"Be concise — prioritize the most actionable points, drop preambles "
+            f"and meta-commentary, keep examples minimal.\n\n"
+        )
+        return warning + system_prompt
+
     async def _call(
         self,
         spec: ModelSpec,
@@ -356,6 +380,7 @@ class AgentLLM:
     ) -> LLMResponse:
         """执行单次 LLM 调用"""
         client = self._get_client(spec)
+        system_prompt = self._maybe_inject_budget_warning(system_prompt)
         full_messages = [{"role": "system", "content": system_prompt}] + messages
 
         kwargs: dict[str, Any] = {
